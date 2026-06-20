@@ -1,0 +1,197 @@
+rules_version = '2';
+
+// ============================================================
+// BantayEskwela Firestore Security Rules
+// Enforces Role-Based Access Control (RBAC) at the database level.
+// ============================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===================== HELPER FUNCTIONS =====================
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Safely fetch the signed-in user's document data.
+    function userData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function userExists() {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    // Returns the role string, or '' if the doc/field is missing.
+    function userRole() {
+      return userExists() ? userData().get('role', '') : '';
+    }
+
+    function isPrincipal() {
+      return userRole() == 'principal';
+    }
+
+    function isGuidance() {
+      return userRole() == 'guidance';
+    }
+
+    function isParent() {
+      return userRole() == 'parent';
+    }
+
+    function isGuard() {
+      return userRole() == 'guard';
+    }
+
+    function validString(field, maxLen) {
+      return field is string && field.size() <= maxLen;
+    }
+
+    // ===================== USERS COLLECTION =====================
+    match /users/{userId} {
+      allow read: if isSignedIn() && (
+        request.auth.uid == userId ||
+        isPrincipal() ||
+        isGuidance()
+      );
+
+      // Self-signup: parent only. Principal: can create staff docs.
+      allow create: if isSignedIn() && (
+        (
+          request.auth.uid == userId
+          && request.resource.data.role == 'parent'
+          && validString(request.resource.data.email, 254)
+          && validString(request.resource.data.fullName, 100)
+        )
+        || (
+          isPrincipal()
+          && request.resource.data.role in ['guidance', 'guard']
+          && validString(request.resource.data.email, 254)
+          && validString(request.resource.data.fullName, 100)
+        )
+      );
+
+      // Owner updates own profile (not role/active).
+      // Principal can update staff active status.
+      allow update: if isSignedIn() && (
+        (
+          request.auth.uid == userId
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.isActive == resource.data.isActive
+        )
+        || (
+          isPrincipal()
+          && resource.data.role in ['guidance', 'guard']
+        )
+      );
+
+      // Principal can delete staff accounts (guidance/guard only).
+      allow delete: if isPrincipal()
+        && resource.data.role in ['guidance', 'guard'];
+    }
+
+    // ===================== STUDENTS COLLECTION =====================
+    match /students/{studentId} {
+      allow read: if isSignedIn() && (
+        isPrincipal() ||
+        isGuidance() ||
+        isGuard() ||
+        (isParent() && resource.data.parentId == request.auth.uid)
+      );
+
+      allow create: if isPrincipal()
+        && validString(request.resource.data.studentId, 50)
+        && validString(request.resource.data.fullName, 100);
+
+      allow update: if isPrincipal();
+      allow delete: if isPrincipal();
+    }
+
+    // ===================== ATTENDANCE COLLECTION =====================
+    match /attendance/{recordId} {
+      allow read: if isSignedIn() && (
+        isPrincipal() ||
+        isGuidance() ||
+        isGuard() ||
+        (isParent() && resource.data.parentId == request.auth.uid)
+      );
+
+      allow create: if isGuard() || isPrincipal();
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // ===================== VIOLATIONS COLLECTION =====================
+    match /violations/{violationId} {
+      allow read: if isSignedIn() && (
+        isPrincipal() ||
+        isGuidance() ||
+        (isParent() && resource.data.parentId == request.auth.uid)
+      );
+
+      allow create: if isGuidance();
+      allow update: if isGuidance();
+      allow delete: if isGuidance();
+    }
+
+    // ===================== ANNOUNCEMENTS COLLECTION =====================
+    match /announcements/{announcementId} {
+      // Any signed-in user can read announcements.
+      allow read: if isSignedIn();
+
+      allow create: if isPrincipal()
+        && validString(request.resource.data.title, 200)
+        && validString(request.resource.data.content, 5000);
+
+      allow update: if isPrincipal();
+      allow delete: if isPrincipal();
+    }
+
+    // ===================== EVENTS COLLECTION =====================
+    match /events/{eventId} {
+      allow read: if isSignedIn();
+
+      allow create: if isPrincipal()
+        && validString(request.resource.data.title, 200)
+        && validString(request.resource.data.description, 5000);
+
+      allow update: if isPrincipal();
+      allow delete: if isPrincipal();
+    }
+
+    // ===================== CONSENTS COLLECTION =====================
+    match /consents/{consentId} {
+      allow read: if isSignedIn();
+
+      allow create: if isPrincipal();
+      allow update: if isPrincipal() || isParent();
+      allow delete: if isPrincipal();
+    }
+
+    // ===================== CONSENT SIGNATURES =====================
+    match /consent_signatures/{sigId} {
+      // Principal sees all; a parent sees only their own signatures.
+      allow read: if isSignedIn() && (
+        isPrincipal() ||
+        (isParent() && resource.data.parentId == request.auth.uid)
+      );
+
+      // A parent can only create a signature stamped with their OWN uid.
+      allow create: if isParent()
+        && request.resource.data.parentId == request.auth.uid
+        && request.resource.data.consentId is string
+        && request.resource.data.studentId is string;
+
+      // Signatures are immutable (legal record).
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // ===================== DENY ALL ELSE =====================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
