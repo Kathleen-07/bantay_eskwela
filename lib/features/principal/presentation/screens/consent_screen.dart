@@ -3,12 +3,13 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:bantay_eskwela/app/theme.dart';
+import 'package:bantay_eskwela/core/widgets/section_scaffold.dart';
 import 'package:bantay_eskwela/core/services/photo_picker.dart' as web_picker;
 import 'package:bantay_eskwela/features/principal/presentation/providers/principal_providers.dart';
 
 class ConsentScreen extends ConsumerStatefulWidget {
   const ConsentScreen({super.key});
-
   @override
   ConsumerState<ConsentScreen> createState() => _ConsentScreenState();
 }
@@ -16,107 +17,75 @@ class ConsentScreen extends ConsumerStatefulWidget {
 class _ConsentScreenState extends ConsumerState<ConsentScreen> {
   String? _selectedEventId;
   String? _selectedEventTitle;
-  DateTime? _deadline;
   Uint8List? _selectedFileBytes;
   String? _selectedFileName;
+  DateTime? _deadline;
   bool _isUploading = false;
 
   Future<void> _pickFile() async {
     try {
       Uint8List? bytes;
       String? name;
-
       if (kIsWeb) {
         final result = await web_picker.pickPhotoFromGallery(
-          accept: '.pdf,image/png,image/jpeg',
-        );
+            accept: '.pdf,image/png,image/jpeg');
         if (result != null) {
           bytes = result.bytes;
           name = result.name;
         }
       }
+      if (bytes == null || name == null) return;
 
-      if (bytes != null && name != null) {
-        final ext = name.split('.').last.toLowerCase();
-        if (!['pdf', 'png', 'jpg', 'jpeg'].contains(ext)) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Please select a PDF, PNG, or JPG file'),
-                backgroundColor: Colors.red,
-              ),
-            );
-          }
-          return;
-        }
-        if (bytes.length > 10 * 1024 * 1024) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('File too large. Maximum 10MB.'),
-                backgroundColor: Colors.red,
-              ),
-            );
-          }
-          return;
-        }
-        setState(() {
-          _selectedFileBytes = bytes;
-          _selectedFileName = name;
-        });
+      final ext = name.split('.').last.toLowerCase();
+      if (!['pdf', 'png', 'jpg', 'jpeg'].contains(ext)) {
+        _toast('Please select a PDF, PNG, or JPG file', error: true);
+        return;
       }
+      if (bytes.length > 10 * 1024 * 1024) {
+        _toast('File too large. Maximum 10MB.', error: true);
+        return;
+      }
+      setState(() {
+        _selectedFileBytes = bytes;
+        _selectedFileName = name;
+      });
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error selecting file: $e'), backgroundColor: Colors.red),
-        );
-      }
+      _toast('Error selecting file: $e', error: true);
     }
   }
 
   Future<void> _pickDeadline() async {
-    final date = await showDatePicker(
+    final d = await showDatePicker(
       context: context,
-      initialDate: DateTime.now().add(const Duration(days: 7)),
+      initialDate: _deadline ?? DateTime.now().add(const Duration(days: 7)),
       firstDate: DateTime.now(),
       lastDate: DateTime.now().add(const Duration(days: 365)),
     );
-    if (date != null) {
-      setState(() => _deadline = date);
-    }
+    if (d != null) setState(() => _deadline = d);
   }
 
   Future<void> _handleUpload() async {
     if (_selectedEventId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select an event')),
-      );
+      _toast('Please select an event');
       return;
     }
-    if (_selectedFileBytes == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select a file')),
-      );
+    if (_selectedFileBytes == null || _selectedFileName == null) {
+      _toast('Please select a file');
       return;
     }
     if (_deadline == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select a deadline')),
-      );
+      _toast('Please select a signing deadline');
       return;
     }
-
     setState(() => _isUploading = true);
-
     try {
       await ref.read(principalRepositoryProvider).uploadConsent(
-        eventId: _selectedEventId!,
-        eventTitle: _selectedEventTitle ?? '',
-        fileBytes: _selectedFileBytes!,
-        fileName: _selectedFileName ?? 'consent_form',
-        deadline: _deadline!,
-      );
-
+            eventId: _selectedEventId!,
+            eventTitle: _selectedEventTitle ?? '',
+            fileBytes: _selectedFileBytes!,
+            fileName: _selectedFileName!,
+            deadline: _deadline!,
+          );
       setState(() {
         _selectedEventId = null;
         _selectedEventTitle = null;
@@ -124,27 +93,46 @@ class _ConsentScreenState extends ConsumerState<ConsentScreen> {
         _selectedFileName = null;
         _deadline = null;
       });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Consent form uploaded successfully!'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
+      _toast('Consent form uploaded!');
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(e.toString().replaceAll('Exception: ', '')),
-            backgroundColor: Theme.of(context).colorScheme.error,
-          ),
-        );
-      }
+      _toast(e.toString().replaceAll('Exception: ', ''), error: true);
     } finally {
       if (mounted) setState(() => _isUploading = false);
     }
+  }
+
+  Future<void> _handleDelete(String id) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Consent Form'),
+        content: const Text(
+            'Are you sure you want to permanently delete this consent form? This cannot be undone.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: FilledButton.styleFrom(backgroundColor: Colors.red),
+              child: const Text('Delete')),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+    try {
+      await ref.read(principalRepositoryProvider).deleteConsent(id);
+      _toast('Consent form deleted.');
+    } catch (e) {
+      _toast('Delete failed: $e', error: true);
+    }
+  }
+
+  void _toast(String msg, {bool error = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(msg),
+        backgroundColor: error ? Colors.red : AppTheme.forest));
   }
 
   @override
@@ -152,187 +140,129 @@ class _ConsentScreenState extends ConsumerState<ConsentScreen> {
     final eventsAsync = ref.watch(eventsStreamProvider);
     final consentsAsync = ref.watch(consentsStreamProvider);
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Consent Forms',
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 24),
-
-          // Upload Form
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 600),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(
-                      'Upload Consent Form',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Event Dropdown
-                    eventsAsync.when(
-                      data: (events) {
-                        final consentEvents =
-                        events.where((e) => e.requiresConsent).toList();
-                        if (consentEvents.isEmpty) {
-                          return const Text(
-                            'No events requiring consent. Create an event first with "Requires Parent Consent" checked.',
-                            style: TextStyle(color: Colors.grey),
-                          );
-                        }
-                        return DropdownButtonFormField<String>(
-                          value: _selectedEventId,
-                          decoration: const InputDecoration(
-                            labelText: 'Select Event',
-                            prefixIcon: Icon(Icons.event),
-                            border: OutlineInputBorder(),
-                          ),
-                          items: consentEvents.map((e) {
-                            return DropdownMenuItem(
-                              value: e.id,
-                              child: Text(e.title),
-                            );
-                          }).toList(),
-                          onChanged: (value) {
-                            final event = consentEvents
-                                .firstWhere((e) => e.id == value);
-                            setState(() {
-                              _selectedEventId = value;
-                              _selectedEventTitle = event.title;
-                            });
-                          },
-                        );
-                      },
-                      loading: () => const LinearProgressIndicator(),
-                      error: (e, _) => Text('Error: $e'),
-                    ),
-                    const SizedBox(height: 16),
-
-                    // File Picker
-                    OutlinedButton.icon(
-                      onPressed: _pickFile,
-                      icon: const Icon(Icons.upload_file),
-                      label: Text(
-                        _selectedFileBytes == null
-                            ? 'Select File (PDF, PNG, JPG — max 10MB)'
-                            : '📄 $_selectedFileName',
+    return CenteredColumn(
+      children: [
+        FormCard(
+          icon: Icons.upload_file,
+          title: 'Upload Consent Form',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              eventsAsync.when(
+                data: (events) {
+                  final consentEvents =
+                      events.where((e) => e.requiresConsent).toList();
+                  if (consentEvents.isEmpty) {
+                    return Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: AppTheme.parchment,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.black12),
                       ),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
+                      child: Text(
+                        'No events requiring consent. Create an event first with "Requires Parent Consent" checked.',
+                        style: TextStyle(color: Colors.grey.shade700),
                       ),
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Deadline Picker
-                    OutlinedButton.icon(
-                      onPressed: _pickDeadline,
-                      icon: const Icon(Icons.calendar_today),
-                      label: Text(
-                        _deadline == null
-                            ? 'Select Signing Deadline'
-                            : 'Deadline: ${DateFormat.yMMMd().format(_deadline!)}',
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-
-                    // Upload Button
-                    FilledButton.icon(
-                      onPressed: _isUploading ? null : _handleUpload,
-                      icon: _isUploading
-                          ? const SizedBox(
+                    );
+                  }
+                  return DropdownButtonFormField<String>(
+                    value: _selectedEventId,
+                    isExpanded: true,
+                    decoration: const InputDecoration(
+                        labelText: 'Select Event',
+                        prefixIcon: Icon(Icons.event),
+                        border: OutlineInputBorder()),
+                    items: consentEvents
+                        .map((e) => DropdownMenuItem(
+                            value: e.id, child: Text(e.title)))
+                        .toList(),
+                    onChanged: (v) {
+                      final ev = consentEvents.firstWhere((e) => e.id == v);
+                      setState(() {
+                        _selectedEventId = v;
+                        _selectedEventTitle = ev.title;
+                      });
+                    },
+                  );
+                },
+                loading: () => const LinearProgressIndicator(),
+                error: (e, _) => Text('Error loading events: $e'),
+              ),
+              const SizedBox(height: 16),
+              OutlinedButton.icon(
+                onPressed: _pickFile,
+                icon: const Icon(Icons.attach_file),
+                label: Text(_selectedFileName ??
+                    'Select File (PDF, PNG, JPG — max 10MB)'),
+                style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 16)),
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: _pickDeadline,
+                icon: const Icon(Icons.calendar_today),
+                label: Text(_deadline == null
+                    ? 'Select Signing Deadline'
+                    : 'Deadline: ${DateFormat.yMMMd().format(_deadline!)}'),
+                style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 16)),
+              ),
+              const SizedBox(height: 16),
+              FilledButton.icon(
+                onPressed: _isUploading ? null : _handleUpload,
+                icon: _isUploading
+                    ? const SizedBox(
                         width: 20,
                         height: 20,
                         child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.white),
-                      )
-                          : const Icon(Icons.cloud_upload),
-                      label: Text(
-                          _isUploading ? 'Uploading...' : 'Upload Consent Form'),
-                      style: FilledButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                      ),
-                    ),
-                  ],
-                ),
+                            strokeWidth: 2, color: Colors.white))
+                    : const Icon(Icons.cloud_upload),
+                label: Text(_isUploading ? 'Uploading...' : 'Upload Consent Form'),
+                style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 16)),
               ),
-            ),
+            ],
           ),
-          const SizedBox(height: 32),
-
-          // Consents List
-          Text(
-            'Uploaded Consent Forms',
-            style: Theme.of(context).textTheme.titleLarge,
-          ),
-          const SizedBox(height: 16),
-          consentsAsync.when(
-            data: (consents) {
-              if (consents.isEmpty) {
-                return const Card(
+        ),
+        const SizedBox(height: 28),
+        const SectionTitle('Uploaded Consent Forms'),
+        consentsAsync.when(
+          data: (list) {
+            if (list.isEmpty) {
+              return const Card(
                   child: Padding(
-                    padding: EdgeInsets.all(32),
-                    child:
-                    Center(child: Text('No consent forms uploaded yet.')),
+                      padding: EdgeInsets.all(32),
+                      child:
+                          Center(child: Text('No consent forms uploaded yet.'))));
+            }
+            return Column(
+              children: list.map((c) {
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  child: ListTile(
+                    leading: CircleAvatar(
+                        backgroundColor: AppTheme.forest.withOpacity(0.12),
+                        child:
+                            const Icon(Icons.description, color: AppTheme.forest)),
+                    title: Text(c.eventTitle,
+                        style: const TextStyle(fontWeight: FontWeight.bold)),
+                    subtitle: Text(
+                        '${c.fileName}\nDeadline: ${DateFormat.yMMMd().format(c.deadline)}'),
+                    trailing: IconButton(
+                        icon: const Icon(Icons.delete_outline, color: Colors.red),
+                        tooltip: 'Delete',
+                        onPressed: () => _handleDelete(c.id)),
+                    isThreeLine: true,
                   ),
                 );
-              }
-              return Column(
-                children: consents.map((c) {
-                  final isExpired = c.deadline.isBefore(DateTime.now());
-                  return Card(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    child: ListTile(
-                      leading: CircleAvatar(
-                        backgroundColor: isExpired
-                            ? Colors.red.shade100
-                            : Colors.blue.shade100,
-                        child: Icon(
-                          Icons.description,
-                          color: isExpired ? Colors.red : Colors.blue,
-                        ),
-                      ),
-                      title: Text(
-                        c.eventTitle,
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      subtitle: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('📄 ${c.fileName}'),
-                          Text(
-                            'Deadline: ${DateFormat.yMMMd().format(c.deadline)}${isExpired ? ' (EXPIRED)' : ''}',
-                            style: TextStyle(
-                              color: isExpired ? Colors.red : Colors.green,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
-                      ),
-                      isThreeLine: true,
-                    ),
-                  );
-                }).toList(),
-              );
-            },
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (error, _) => Text('Error: $error'),
-          ),
-        ],
-      ),
+              }).toList(),
+            );
+          },
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (e, _) => Text('Error: $e'),
+        ),
+      ],
     );
   }
 }
