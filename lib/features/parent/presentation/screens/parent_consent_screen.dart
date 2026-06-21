@@ -3,7 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:bantay_eskwela/app/theme.dart';
+import 'package:bantay_eskwela/core/services/cloudinary_service.dart';
+import 'package:bantay_eskwela/core/widgets/signature_records_view.dart';
+import 'package:bantay_eskwela/features/auth/presentation/providers/auth_provider.dart';
 import 'package:bantay_eskwela/features/parent/presentation/providers/parent_providers.dart';
+import 'package:bantay_eskwela/features/parent/presentation/widgets/signature_pad_dialog.dart';
+import 'package:bantay_eskwela/features/parent/presentation/widgets/form_viewer.dart';
 import 'package:bantay_eskwela/features/principal/domain/consent_model.dart';
 
 class ParentConsentScreen extends ConsumerWidget {
@@ -60,12 +65,32 @@ class _ConsentCard extends ConsumerWidget {
 
   Future<void> _sign(BuildContext context, WidgetRef ref, dynamic child) async {
     try {
+      // 1. Show signature pad dialog
+      final bytes = await showSignaturePad(
+        context,
+        childName: child.fullName,
+      );
+      if (bytes == null) return; // User cancelled
+
+      // 2. Upload the drawn signature PNG to Cloudinary
+      final safeId = child.studentId.replaceAll(RegExp(r'[^\w]'), '_');
+      final signatureUrl = await CloudinaryService.uploadImage(
+        imageBytes: bytes,
+        fileName: 'signature_${consent.id}_$safeId.png',
+      );
+
+      // 3. Record the immutable signature with the image URL
+      final parentName =
+          ref.read(currentUserProvider).valueOrNull?.fullName ?? 'Parent';
       await ref.read(parentRepositoryProvider).signConsent(
             consentId: consent.id,
             eventTitle: consent.eventTitle,
             studentId: child.studentId,
             studentName: child.fullName,
+            parentName: parentName,
+            signatureUrl: signatureUrl,
           );
+
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -84,8 +109,17 @@ class _ConsentCard extends ConsumerWidget {
     }
   }
 
+  Future<void> _viewForm(BuildContext context) async {
+    await openConsentForm(
+      context,
+      url: consent.fileUrl,
+      fileName: consent.fileName,
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final mySignatures = ref.watch(mySignaturesProvider).valueOrNull ?? [];
     return Card(
       margin: const EdgeInsets.only(bottom: 14),
       child: Padding(
@@ -102,9 +136,7 @@ class _ConsentCard extends ConsumerWidget {
             const SizedBox(height: 8),
             // View the form file
             OutlinedButton.icon(
-              onPressed: () {
-                // Open the Cloudinary file URL — handled by browser/OS
-              },
+              onPressed: () => _viewForm(context),
               icon: const Icon(Icons.open_in_new, size: 16),
               label: const Text('View form'),
             ),
@@ -131,17 +163,41 @@ class _ConsentCard extends ConsumerWidget {
                             style: const TextStyle(fontSize: 14)),
                       ),
                       if (signed)
-                        Row(
-                          children: const [
-                            Icon(Icons.check_circle,
-                                color: AppTheme.forest, size: 18),
-                            SizedBox(width: 4),
-                            Text('Signed',
-                                style: TextStyle(
-                                    color: AppTheme.forest,
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 13)),
-                          ],
+                        InkWell(
+                          borderRadius: BorderRadius.circular(8),
+                          onTap: () {
+                            // Show this parent's signature(s) for this consent.
+                            final mine = mySignatures
+                                .where((s) =>
+                                    s.consentId == consent.id &&
+                                    s.studentId == child.studentId)
+                                .toList();
+                            showSignatureRecords(
+                              context,
+                              title: '${consent.eventTitle} — My Signature',
+                              signatures: mine,
+                            );
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 4),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: const [
+                                Icon(Icons.check_circle,
+                                    color: AppTheme.forest, size: 18),
+                                SizedBox(width: 4),
+                                Text('Signed',
+                                    style: TextStyle(
+                                        color: AppTheme.forest,
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 13)),
+                                SizedBox(width: 2),
+                                Icon(Icons.visibility_outlined,
+                                    color: AppTheme.forest, size: 14),
+                              ],
+                            ),
+                          ),
                         )
                       else
                         FilledButton(

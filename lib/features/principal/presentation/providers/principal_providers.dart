@@ -5,6 +5,7 @@ import 'package:bantay_eskwela/features/principal/domain/student_model.dart';
 import 'package:bantay_eskwela/features/principal/domain/announcement_model.dart';
 import 'package:bantay_eskwela/features/principal/domain/event_model.dart';
 import 'package:bantay_eskwela/features/principal/domain/consent_model.dart';
+import 'package:bantay_eskwela/features/principal/domain/consent_signature_model.dart';
 
 /// Principal Repository provider
 final principalRepositoryProvider = Provider<PrincipalRepository>((ref) {
@@ -47,6 +48,16 @@ final consentsStreamProvider = StreamProvider<List<ConsentModel>>((ref) {
   final ready = ref.watch(_userReadyProvider);
   if (!ready) return Stream.value([]);
   return ref.watch(principalRepositoryProvider).getConsentsStream();
+});
+
+/// Signatures for a specific consent form (principal verification view).
+final consentSignaturesProvider =
+    StreamProvider.family<List<ConsentSignature>, String>((ref, consentId) {
+  final ready = ref.watch(_userReadyProvider);
+  if (!ready) return Stream.value([]);
+  return ref
+      .watch(principalRepositoryProvider)
+      .getSignaturesForConsent(consentId);
 });
 
 /// Reactive dashboard stats — derived from the live streams so the

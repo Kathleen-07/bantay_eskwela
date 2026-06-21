@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:bantay_eskwela/app/theme.dart';
 import 'package:bantay_eskwela/core/widgets/section_scaffold.dart';
 import 'package:bantay_eskwela/core/services/photo_picker.dart' as web_picker;
+import 'package:bantay_eskwela/core/widgets/signature_records_view.dart';
 import 'package:bantay_eskwela/features/principal/presentation/providers/principal_providers.dart';
 
 class ConsentScreen extends ConsumerStatefulWidget {
@@ -238,6 +239,8 @@ class _ConsentScreenState extends ConsumerState<ConsentScreen> {
             }
             return Column(
               children: list.map((c) {
+                final sigsAsync = ref.watch(consentSignaturesProvider(c.id));
+                final sigs = sigsAsync.valueOrNull ?? [];
                 return Card(
                   margin: const EdgeInsets.only(bottom: 12),
                   child: ListTile(
@@ -249,10 +252,46 @@ class _ConsentScreenState extends ConsumerState<ConsentScreen> {
                         style: const TextStyle(fontWeight: FontWeight.bold)),
                     subtitle: Text(
                         '${c.fileName}\nDeadline: ${DateFormat.yMMMd().format(c.deadline)}'),
-                    trailing: IconButton(
-                        icon: const Icon(Icons.delete_outline, color: Colors.red),
-                        tooltip: 'Delete',
-                        onPressed: () => _handleDelete(c.id)),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Signed-count badge — tap to view signatures
+                        InkWell(
+                          borderRadius: BorderRadius.circular(20),
+                          onTap: () => showSignatureRecords(
+                            context,
+                            title: '${c.eventTitle} — Signatures',
+                            signatures: sigs,
+                          ),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: AppTheme.forest.withOpacity(0.12),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.verified,
+                                    size: 15, color: AppTheme.forest),
+                                const SizedBox(width: 4),
+                                Text('${sigs.length} signed',
+                                    style: const TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppTheme.forest)),
+                              ],
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                            icon: const Icon(Icons.delete_outline,
+                                color: Colors.red),
+                            tooltip: 'Delete',
+                            onPressed: () => _handleDelete(c.id)),
+                      ],
+                    ),
                     isThreeLine: true,
                   ),
                 );

@@ -5,6 +5,7 @@ import 'package:bantay_eskwela/features/principal/domain/student_model.dart';
 import 'package:bantay_eskwela/features/principal/domain/announcement_model.dart';
 import 'package:bantay_eskwela/features/principal/domain/event_model.dart';
 import 'package:bantay_eskwela/features/principal/domain/consent_model.dart';
+import 'package:bantay_eskwela/features/principal/domain/consent_signature_model.dart';
 
 final parentRepositoryProvider = Provider<ParentRepository>((ref) {
   return ParentRepository();
@@ -44,6 +45,13 @@ final parentConsentsProvider = StreamProvider<List<ConsentModel>>((ref) {
 final mySignedKeysProvider = StreamProvider<Set<String>>((ref) {
   if (!ref.watch(_parentReadyProvider)) return Stream.value(<String>{});
   return ref.watch(parentRepositoryProvider).getMySignedKeysStream();
+});
+
+/// The parent's full signature records (their own proof view).
+final mySignaturesProvider =
+    StreamProvider<List<ConsentSignature>>((ref) {
+  if (!ref.watch(_parentReadyProvider)) return Stream.value([]);
+  return ref.watch(parentRepositoryProvider).getMySignaturesStream();
 });
 
 // ==================== UNREAD BADGE COUNTS ====================

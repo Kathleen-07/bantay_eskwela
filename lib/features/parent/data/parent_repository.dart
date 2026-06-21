@@ -6,6 +6,7 @@ import 'package:bantay_eskwela/features/principal/domain/student_model.dart';
 import 'package:bantay_eskwela/features/principal/domain/announcement_model.dart';
 import 'package:bantay_eskwela/features/principal/domain/event_model.dart';
 import 'package:bantay_eskwela/features/principal/domain/consent_model.dart';
+import 'package:bantay_eskwela/features/principal/domain/consent_signature_model.dart';
 
 /// A single attendance record (time-in / time-out) for a student.
 class AttendanceRecord {
@@ -143,12 +144,25 @@ class ParentRepository {
             .toSet());
   }
 
+  /// The current parent's full signature records (their own proof).
+  Stream<List<ConsentSignature>> getMySignaturesStream() {
+    final uid = _uid;
+    return _firestore
+        .collection('consent_signatures')
+        .where('parentId', isEqualTo: uid)
+        .snapshots()
+        .map((snap) =>
+            snap.docs.map((d) => ConsentSignature.fromFirestore(d)).toList());
+  }
+
   /// Record a digital consent signature for one of the parent's children.
   Future<void> signConsent({
     required String consentId,
     required String eventTitle,
     required String studentId,
     required String studentName,
+    String? parentName,
+    String? signatureUrl,
   }) async {
     final uid = _uid;
 
@@ -170,7 +184,9 @@ class ParentRepository {
       'studentId': studentId,
       'studentName': InputValidators.sanitize(studentName),
       'parentId': uid,
+      'parentName': InputValidators.sanitize(parentName ?? 'Parent'),
       'signedAt': Timestamp.now(),
+      'signatureUrl': signatureUrl,
     });
   }
 }

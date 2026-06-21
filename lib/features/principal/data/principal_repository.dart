@@ -9,6 +9,7 @@ import 'package:bantay_eskwela/features/principal/domain/student_model.dart';
 import 'package:bantay_eskwela/features/principal/domain/announcement_model.dart';
 import 'package:bantay_eskwela/features/principal/domain/event_model.dart';
 import 'package:bantay_eskwela/features/principal/domain/consent_model.dart';
+import 'package:bantay_eskwela/features/principal/domain/consent_signature_model.dart';
 
 /// Repository for all Principal CRUD operations.
 /// Security: Validates all input, checks auth state, sanitizes data.
@@ -398,6 +399,20 @@ class PrincipalRepository {
         .collection(AppConstants.consentsCollection)
         .doc(consentId)
         .delete();
+  }
+
+  /// All signatures submitted for a given consent form (principal view).
+  Stream<List<ConsentSignature>> getSignaturesForConsent(String consentId) {
+    return _firestore
+        .collection('consent_signatures')
+        .where('consentId', isEqualTo: consentId)
+        .snapshots()
+        .map((snap) {
+      final list =
+          snap.docs.map((d) => ConsentSignature.fromFirestore(d)).toList();
+      list.sort((a, b) => b.signedAt.compareTo(a.signedAt));
+      return list;
+    });
   }
 
   // ==================== DASHBOARD STATS ====================

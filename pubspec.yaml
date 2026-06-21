@@ -53,6 +53,12 @@ dependencies:
   # HTTP for Cloudinary uploads
   http: ^1.2.1
 
+  # Digital signature pad (consent signing)
+  signature: ^5.5.0
+
+  # Open external URLs (PDF consent forms)
+  url_launcher: ^6.3.0
+
   # Screenshot capture for ID card download
   screenshot: ^3.0.0
 
@@ -63,6 +69,24 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.1
+
+# App icon generation — run: dart run flutter_launcher_icons
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/icon/app_icon.png"
+  min_sdk_android: 21
+  # White background fill behind the icon on adaptive (Android 8+) launchers
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/icon/app_icon.png"
+  remove_alpha_ios: true
+  # Web favicon + PWA install icons
+  web:
+    generate: true
+    image_path: "assets/icon/app_icon.png"
+    background_color: "#FFFFFF"
+    theme_color: "#1B5E33"
 
 flutter:
   uses-material-design: true
