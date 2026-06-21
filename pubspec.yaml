@@ -26,6 +26,9 @@ dependencies:
   # Secure Storage
   flutter_secure_storage: ^9.2.4
 
+  # Local key-value storage (unread badge timestamps)
+  shared_preferences: ^2.3.2
+
   # Input Validation
   form_builder_validators: ^11.1.0
 

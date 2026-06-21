@@ -128,7 +128,7 @@ class _ManageStaffScreenState extends ConsumerState<ManageStaffScreen> {
                   controller: _passwordController,
                   obscureText: _obscure,
                   decoration: InputDecoration(
-                    labelText: 'Temporary Password',
+                    labelText: 'Password',
                     prefixIcon: const Icon(Icons.lock_outlined),
                     border: const OutlineInputBorder(),
                     suffixIcon: IconButton(

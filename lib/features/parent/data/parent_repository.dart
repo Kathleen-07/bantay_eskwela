@@ -105,7 +105,15 @@ class ParentRepository {
         .collection(AppConstants.eventsCollection)
         .snapshots()
         .map((snap) {
-      final list = snap.docs.map((d) => EventModel.fromFirestore(d)).toList();
+      final now = DateTime.now();
+      final list = snap.docs
+          .map((d) => EventModel.fromFirestore(d))
+          .where((e) {
+            final endOfEventDay = DateTime(
+                e.eventDate.year, e.eventDate.month, e.eventDate.day, 23, 59, 59);
+            return endOfEventDay.isAfter(now);
+          })
+          .toList();
       list.sort((a, b) => a.eventDate.compareTo(b.eventDate));
       return list;
     });

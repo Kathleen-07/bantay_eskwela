@@ -7,6 +7,7 @@ import 'package:bantay_eskwela/features/auth/presentation/providers/auth_provide
 import 'package:bantay_eskwela/features/parent/presentation/providers/parent_providers.dart';
 import 'package:bantay_eskwela/features/parent/presentation/screens/parent_consent_screen.dart';
 import 'package:bantay_eskwela/features/account/account_screen.dart';
+import 'package:bantay_eskwela/core/services/seen_tracker.dart';
 
 class ParentHomeScreen extends ConsumerStatefulWidget {
   const ParentHomeScreen({super.key});
@@ -17,6 +18,44 @@ class ParentHomeScreen extends ConsumerStatefulWidget {
 
 class _ParentHomeScreenState extends ConsumerState<ParentHomeScreen> {
   int _index = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    // Load the stored "last seen" times into the badge providers.
+    _loadSeenTimes();
+  }
+
+  Future<void> _loadSeenTimes() async {
+    await SeenTracker.ensureInitialized();
+    final news = await SeenTracker.lastSeen(SeenTab.news);
+    final events = await SeenTracker.lastSeen(SeenTab.events);
+    final consent = await SeenTracker.lastSeen(SeenTab.consent);
+    if (!mounted) return;
+    ref.read(lastSeenNewsProvider.notifier).state = news;
+    ref.read(lastSeenEventsProvider.notifier).state = events;
+    ref.read(lastSeenConsentProvider.notifier).state = consent;
+  }
+
+  /// When a tab is opened, mark it seen (clears its badge).
+  Future<void> _onTabOpened(int index) async {
+    SeenTab? tab;
+    if (index == 1) tab = SeenTab.news;
+    if (index == 2) tab = SeenTab.events;
+    if (index == 3) tab = SeenTab.consent;
+    if (tab == null) return;
+
+    await SeenTracker.markSeen(tab);
+    final now = DateTime.now();
+    if (!mounted) return;
+    if (tab == SeenTab.news) {
+      ref.read(lastSeenNewsProvider.notifier).state = now;
+    } else if (tab == SeenTab.events) {
+      ref.read(lastSeenEventsProvider.notifier).state = now;
+    } else if (tab == SeenTab.consent) {
+      ref.read(lastSeenConsentProvider.notifier).state = now;
+    }
+  }
 
   static const _titles = [
     'My Children',
@@ -55,6 +94,10 @@ class _ParentHomeScreenState extends ConsumerState<ParentHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final newsCount = ref.watch(unreadNewsCountProvider);
+    final eventsCount = ref.watch(unreadEventsCountProvider);
+    final consentCount = ref.watch(unreadConsentCountProvider);
+
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -73,30 +116,44 @@ class _ParentHomeScreenState extends ConsumerState<ParentHomeScreen> {
       body: IndexedStack(index: _index, children: _views),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
-        onDestinationSelected: (i) => setState(() => _index = i),
-        destinations: const [
-          NavigationDestination(
+        onDestinationSelected: (i) {
+          setState(() => _index = i);
+          _onTabOpened(i);
+        },
+        destinations: [
+          const NavigationDestination(
               icon: Icon(Icons.family_restroom_outlined),
               selectedIcon: Icon(Icons.family_restroom),
               label: 'Children'),
           NavigationDestination(
-              icon: Icon(Icons.campaign_outlined),
-              selectedIcon: Icon(Icons.campaign),
+              icon: _badged(const Icon(Icons.campaign_outlined), newsCount),
+              selectedIcon: const Icon(Icons.campaign),
               label: 'News'),
           NavigationDestination(
-              icon: Icon(Icons.event_outlined),
-              selectedIcon: Icon(Icons.event),
+              icon: _badged(const Icon(Icons.event_outlined), eventsCount),
+              selectedIcon: const Icon(Icons.event),
               label: 'Events'),
           NavigationDestination(
-              icon: Icon(Icons.description_outlined),
-              selectedIcon: Icon(Icons.description),
+              icon:
+                  _badged(const Icon(Icons.description_outlined), consentCount),
+              selectedIcon: const Icon(Icons.description),
               label: 'Consent'),
-          NavigationDestination(
+          const NavigationDestination(
               icon: Icon(Icons.account_circle_outlined),
               selectedIcon: Icon(Icons.account_circle),
               label: 'Account'),
         ],
       ),
+    );
+  }
+
+  /// Wraps an icon with a red count badge when [count] > 0.
+  Widget _badged(Widget icon, int count) {
+    if (count <= 0) return icon;
+    return Badge(
+      label: Text('$count'),
+      backgroundColor: Colors.red,
+      child: icon,
     );
   }
 }
@@ -130,6 +187,14 @@ class _MonitorView extends ConsumerWidget {
     final attendance = ref.watch(myAttendanceProvider);
     final user = ref.watch(currentUserProvider).valueOrNull;
 
+    final hour = DateTime.now().hour;
+    final greeting = hour < 12
+        ? 'Good morning'
+        : hour < 18
+            ? 'Good afternoon'
+            : 'Good evening';
+    final firstName = user?.fullName.split(' ').first ?? 'Parent';
+
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
@@ -153,7 +218,7 @@ class _MonitorView extends ConsumerWidget {
                       fontWeight: FontWeight.w600)),
               const SizedBox(height: 8),
               Text(
-                'Hello, ${user?.fullName.split(' ').first ?? 'Parent'}.',
+                '$greeting, $firstName.',
                 style: GoogleFonts.lora(
                     color: Colors.white,
                     fontSize: 22,

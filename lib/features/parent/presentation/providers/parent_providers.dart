@@ -45,3 +45,35 @@ final mySignedKeysProvider = StreamProvider<Set<String>>((ref) {
   if (!ref.watch(_parentReadyProvider)) return Stream.value(<String>{});
   return ref.watch(parentRepositoryProvider).getMySignedKeysStream();
 });
+
+// ==================== UNREAD BADGE COUNTS ====================
+
+/// Holds the "last seen" time for each tab as reactive state.
+/// Updating these (when a tab is opened) recomputes the badge counts.
+final lastSeenNewsProvider =
+    StateProvider<DateTime>((ref) => DateTime.fromMillisecondsSinceEpoch(0));
+final lastSeenEventsProvider =
+    StateProvider<DateTime>((ref) => DateTime.fromMillisecondsSinceEpoch(0));
+final lastSeenConsentProvider =
+    StateProvider<DateTime>((ref) => DateTime.fromMillisecondsSinceEpoch(0));
+
+/// Number of announcements newer than the last time News was opened.
+final unreadNewsCountProvider = Provider<int>((ref) {
+  final lastSeen = ref.watch(lastSeenNewsProvider);
+  final items = ref.watch(parentAnnouncementsProvider).valueOrNull ?? [];
+  return items.where((a) => a.createdAt.isAfter(lastSeen)).length;
+});
+
+/// Number of events newer than the last time Events was opened.
+final unreadEventsCountProvider = Provider<int>((ref) {
+  final lastSeen = ref.watch(lastSeenEventsProvider);
+  final items = ref.watch(parentEventsProvider).valueOrNull ?? [];
+  return items.where((e) => e.createdAt.isAfter(lastSeen)).length;
+});
+
+/// Number of consent forms newer than the last time Consent was opened.
+final unreadConsentCountProvider = Provider<int>((ref) {
+  final lastSeen = ref.watch(lastSeenConsentProvider);
+  final items = ref.watch(parentConsentsProvider).valueOrNull ?? [];
+  return items.where((c) => c.createdAt.isAfter(lastSeen)).length;
+});

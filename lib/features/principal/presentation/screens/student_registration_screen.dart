@@ -33,7 +33,7 @@ class _StudentRegistrationScreenState
   final _searchController = TextEditingController();
 
   static const List<String> _gradeLevels = [
-    'Grade 7', 'Grade 8', 'Grade 9', 'Grade 10', 'Grade 11', 'Grade 12',
+    '7', '8', '9', '10', '11', '12',
   ];
   static const List<String> _sections = [
     'St. Luke', 'St. Rita', 'St. Mark', 'St. John', 'St. Paul',

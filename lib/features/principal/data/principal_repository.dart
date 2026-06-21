@@ -302,14 +302,21 @@ class PrincipalRepository {
     });
   }
 
-  /// Get all events — sorted in-app (no composite index needed)
+  /// Get all events — hides events after their event date has passed.
   Stream<List<EventModel>> getEventsStream() {
     return _firestore
         .collection(AppConstants.eventsCollection)
         .snapshots()
         .map((snapshot) {
+      final now = DateTime.now();
       final list = snapshot.docs
           .map((doc) => EventModel.fromFirestore(doc))
+          .where((e) {
+            // Keep the event visible through the end of its event day.
+            final endOfEventDay = DateTime(
+                e.eventDate.year, e.eventDate.month, e.eventDate.day, 23, 59, 59);
+            return endOfEventDay.isAfter(now);
+          })
           .toList();
       list.sort((a, b) => a.eventDate.compareTo(b.eventDate));
       return list;
