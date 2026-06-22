@@ -6,6 +6,7 @@ import 'package:bantay_eskwela/features/principal/domain/announcement_model.dart
 import 'package:bantay_eskwela/features/principal/domain/event_model.dart';
 import 'package:bantay_eskwela/features/principal/domain/consent_model.dart';
 import 'package:bantay_eskwela/features/principal/domain/consent_signature_model.dart';
+import 'package:bantay_eskwela/features/guidance/domain/violation_model.dart';
 
 final parentRepositoryProvider = Provider<ParentRepository>((ref) {
   return ParentRepository();
@@ -24,6 +25,13 @@ final myChildrenProvider = StreamProvider<List<StudentModel>>((ref) {
 final myAttendanceProvider = StreamProvider<List<AttendanceRecord>>((ref) {
   if (!ref.watch(_parentReadyProvider)) return Stream.value([]);
   return ref.watch(parentRepositoryProvider).getMyChildrenAttendanceStream();
+});
+
+/// Violations for the parent's own children.
+final myChildrenViolationsProvider =
+    StreamProvider<List<ViolationModel>>((ref) {
+  if (!ref.watch(_parentReadyProvider)) return Stream.value([]);
+  return ref.watch(parentRepositoryProvider).getMyChildrenViolationsStream();
 });
 
 final parentAnnouncementsProvider =

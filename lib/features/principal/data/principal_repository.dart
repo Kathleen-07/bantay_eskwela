@@ -107,6 +107,7 @@ class PrincipalRepository {
     required String gradeLevel,
     required String parentId,
     required String parentPhone,
+    String? photoUrl,
   }) async {
     // Validate (same rules as registration)
     final nameError = InputValidators.validateName(fullName);
@@ -120,6 +121,12 @@ class PrincipalRepository {
     if (gradeLevel.trim().isEmpty) throw Exception('Grade level is required');
     if (!RegExp(r'^(\+63|0)[0-9]{10}$').hasMatch(parentPhone.trim())) {
       throw Exception('Invalid phone number. Use format: 09XXXXXXXXX');
+    }
+
+    if (photoUrl != null &&
+        photoUrl.isNotEmpty &&
+        !photoUrl.startsWith('https://res.cloudinary.com/')) {
+      throw Exception('Invalid photo URL source');
     }
 
     // Ensure the new student ID isn't used by ANOTHER student
@@ -144,6 +151,7 @@ class PrincipalRepository {
       'parentId': parentId,
       'parentPhone': parentPhone.trim(),
       'updatedAt': Timestamp.now(),
+      if (photoUrl != null) 'photoUrl': photoUrl,
     });
   }
 

@@ -8,6 +8,7 @@ import 'package:bantay_eskwela/features/parent/presentation/providers/parent_pro
 import 'package:bantay_eskwela/features/parent/presentation/screens/parent_consent_screen.dart';
 import 'package:bantay_eskwela/features/account/account_screen.dart';
 import 'package:bantay_eskwela/core/services/seen_tracker.dart';
+import 'package:bantay_eskwela/features/guidance/presentation/widgets/severity_badge.dart';
 
 class ParentHomeScreen extends ConsumerStatefulWidget {
   const ParentHomeScreen({super.key});
@@ -172,12 +173,12 @@ Widget _eyebrow(String text) => Padding(
           const SizedBox(width: 10),
           Expanded(
               child: Container(
-                  height: 1, color: Colors.black.withOpacity(0.08))),
+                  height: 1, color: Colors.black.withValues(alpha: 0.08))),
         ],
       ),
     );
 
-// ===================== MONITOR (children + attendance) =====================
+// ===================== MONITOR (per-child: attendance + violations) =====================
 class _MonitorView extends ConsumerWidget {
   const _MonitorView();
 
@@ -185,6 +186,7 @@ class _MonitorView extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final children = ref.watch(myChildrenProvider);
     final attendance = ref.watch(myAttendanceProvider);
+    final violations = ref.watch(myChildrenViolationsProvider);
     final user = ref.watch(currentUserProvider).valueOrNull;
 
     final hour = DateTime.now().hour;
@@ -217,17 +219,15 @@ class _MonitorView extends ConsumerWidget {
                       letterSpacing: 2,
                       fontWeight: FontWeight.w600)),
               const SizedBox(height: 8),
-              Text(
-                '$greeting, $firstName.',
-                style: GoogleFonts.lora(
-                    color: Colors.white,
-                    fontSize: 22,
-                    fontWeight: FontWeight.w600),
-              ),
+              Text('$greeting, $firstName.',
+                  style: GoogleFonts.lora(
+                      color: Colors.white,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w600)),
               const SizedBox(height: 4),
               Text("Here is your child's school activity.",
                   style: TextStyle(
-                      color: Colors.white.withOpacity(0.8), fontSize: 13)),
+                      color: Colors.white.withValues(alpha: 0.8), fontSize: 13)),
             ],
           ),
         ),
@@ -235,76 +235,26 @@ class _MonitorView extends ConsumerWidget {
 
         _eyebrow('MY CHILDREN'),
         children.when(
-          data: (list) {
-            if (list.isEmpty) {
-              return _emptyCard(
-                  'No children linked yet',
+          data: (kids) {
+            if (kids.isEmpty) {
+              return _emptyCard('No children linked yet',
                   'Once the school registers your child under your account, they will appear here.');
             }
+            final att = attendance.valueOrNull ?? [];
+            final viol = violations.valueOrNull ?? [];
             return Column(
-              children: list
-                  .map((s) => Card(
-                        margin: const EdgeInsets.only(bottom: 10),
-                        child: ListTile(
-                          leading: CircleAvatar(
-                            radius: 24,
-                            backgroundColor: AppTheme.parchment,
-                            backgroundImage: s.photoUrl.isNotEmpty
-                                ? NetworkImage(s.photoUrl)
-                                : null,
-                            child: s.photoUrl.isEmpty
-                                ? const Icon(Icons.person,
-                                    color: AppTheme.forest)
-                                : null,
-                          ),
-                          title: Text(s.fullName,
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.w600)),
-                          subtitle: Text(
-                              'Grade ${s.gradeLevel} • ${s.section}\nID: ${s.studentId}'),
-                          isThreeLine: true,
-                        ),
-                      ))
-                  .toList(),
-            );
-          },
-          loading: () => const Padding(
-              padding: EdgeInsets.all(24),
-              child: Center(child: CircularProgressIndicator())),
-          error: (e, _) => _emptyCard('Could not load', '$e'),
-        ),
-        const SizedBox(height: 24),
-
-        _eyebrow('RECENT ATTENDANCE'),
-        attendance.when(
-          data: (list) {
-            if (list.isEmpty) {
-              return _emptyCard('No attendance records yet',
-                  "Entry and exit records will appear here once your child taps their ID at the school gate.");
-            }
-            return Column(
-              children: list.take(20).map((a) {
-                final isIn = a.type.toLowerCase().contains('in');
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  child: ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor:
-                          (isIn ? AppTheme.forest : AppTheme.gold)
-                              .withOpacity(0.12),
-                      child: Icon(isIn ? Icons.login : Icons.logout,
-                          color: isIn ? AppTheme.forest : AppTheme.gold),
-                    ),
-                    title: Text(a.studentName,
-                        style:
-                            const TextStyle(fontWeight: FontWeight.w600)),
-                    subtitle: Text(a.type),
-                    trailing: Text(
-                      DateFormat('MMM d\nh:mm a').format(a.timestamp),
-                      textAlign: TextAlign.right,
-                      style: const TextStyle(fontSize: 11),
-                    ),
-                  ),
+              children: kids.map((child) {
+                final childAtt = att
+                    .where((a) => a.studentId == child.studentId)
+                    .take(5)
+                    .toList();
+                final childViol = viol
+                    .where((v) => v.studentId == child.studentId)
+                    .toList();
+                return _ChildCard(
+                  child: child,
+                  attendance: childAtt,
+                  violations: childViol,
                 );
               }).toList(),
             );
@@ -319,6 +269,167 @@ class _MonitorView extends ConsumerWidget {
   }
 }
 
+/// One card per child: header + their attendance + their violations.
+class _ChildCard extends StatelessWidget {
+  final dynamic child;
+  final List attendance;
+  final List violations;
+  const _ChildCard({
+    required this.child,
+    required this.attendance,
+    required this.violations,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 16),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Child header — green strip
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: const BoxDecoration(
+              gradient:
+                  LinearGradient(colors: [AppTheme.forest, AppTheme.pine]),
+            ),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 26,
+                  backgroundColor: Colors.white,
+                  backgroundImage: child.photoUrl.isNotEmpty
+                      ? NetworkImage(child.photoUrl)
+                      : null,
+                  child: child.photoUrl.isEmpty
+                      ? const Icon(Icons.person, color: AppTheme.forest)
+                      : null,
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(child.fullName,
+                          style: GoogleFonts.lora(
+                              color: Colors.white,
+                              fontSize: 17,
+                              fontWeight: FontWeight.w600)),
+                      const SizedBox(height: 2),
+                      Text('Grade ${child.gradeLevel} • ${child.section}',
+                          style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.85),
+                              fontSize: 12)),
+                      Text('ID: ${child.studentId}',
+                          style: TextStyle(
+                              color: AppTheme.gold, fontSize: 11)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Attendance subsection
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
+            child: _subLabel(Icons.login, 'Recent Attendance'),
+          ),
+          if (attendance.isEmpty)
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: Text('No attendance records yet.',
+                  style: TextStyle(fontSize: 13, color: Colors.grey)),
+            )
+          else
+            ...attendance.map((a) {
+              final isIn = a.type.toString().toLowerCase().contains('in');
+              return ListTile(
+                dense: true,
+                visualDensity: VisualDensity.compact,
+                leading: Icon(isIn ? Icons.login : Icons.logout,
+                    color: isIn ? AppTheme.forest : AppTheme.gold, size: 20),
+                title: Text(a.type, style: const TextStyle(fontSize: 13)),
+                trailing: Text(
+                  DateFormat('MMM d, h:mm a').format(a.timestamp),
+                  style: const TextStyle(fontSize: 11),
+                ),
+              );
+            }),
+
+          const Divider(height: 1),
+
+          // Violations subsection
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            child: _subLabel(Icons.gavel, 'Violation Records'),
+          ),
+          if (violations.isEmpty)
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 0, 16, 14),
+              child: Text('No violation records.',
+                  style: TextStyle(fontSize: 13, color: Colors.grey)),
+            )
+          else
+            ...violations.map((v) {
+              return Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(v.type,
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  color: AppTheme.forest)),
+                        ),
+                        SeverityBadge(severity: v.severity),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(v.description, style: const TextStyle(height: 1.4)),
+                    const SizedBox(height: 6),
+                    Row(children: [
+                      Icon(Icons.schedule,
+                          size: 13, color: Colors.grey.shade500),
+                      const SizedBox(width: 4),
+                      Text(DateFormat.yMMMd().format(v.dateOfIncident),
+                          style: TextStyle(
+                              fontSize: 12, color: Colors.grey.shade600)),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text('by ${v.recordedByName}',
+                            style: TextStyle(
+                                fontSize: 12, color: Colors.grey.shade600),
+                            overflow: TextOverflow.ellipsis),
+                      ),
+                    ]),
+                  ],
+                ),
+              );
+            }),
+        ],
+      ),
+    );
+  }
+
+  Widget _subLabel(IconData icon, String text) => Row(
+        children: [
+          Icon(icon, size: 15, color: AppTheme.forest),
+          const SizedBox(width: 6),
+          Text(text,
+              style: const TextStyle(
+                  fontSize: 11,
+                  letterSpacing: 1.2,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.forest)),
+        ],
+      );
+}
 // ===================== ANNOUNCEMENTS =====================
 class _AnnouncementsView extends ConsumerWidget {
   const _AnnouncementsView();
@@ -406,7 +517,7 @@ class _EventsView extends ConsumerWidget {
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 8, vertical: 3),
                             decoration: BoxDecoration(
-                              color: AppTheme.gold.withOpacity(0.15),
+                              color: AppTheme.gold.withValues(alpha: 0.15),
                               borderRadius: BorderRadius.circular(20),
                             ),
                             child: const Text('Consent needed',

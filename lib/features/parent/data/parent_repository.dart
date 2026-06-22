@@ -7,6 +7,7 @@ import 'package:bantay_eskwela/features/principal/domain/announcement_model.dart
 import 'package:bantay_eskwela/features/principal/domain/event_model.dart';
 import 'package:bantay_eskwela/features/principal/domain/consent_model.dart';
 import 'package:bantay_eskwela/features/principal/domain/consent_signature_model.dart';
+import 'package:bantay_eskwela/features/guidance/domain/violation_model.dart';
 
 /// A single attendance record (time-in / time-out) for a student.
 class AttendanceRecord {
@@ -85,6 +86,21 @@ class ParentRepository {
       final list =
           snap.docs.map((d) => AttendanceRecord.fromFirestore(d)).toList();
       list.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+      return list;
+    });
+  }
+
+  /// Violations for the current parent's children only.
+  Stream<List<ViolationModel>> getMyChildrenViolationsStream() {
+    final uid = _uid;
+    return _firestore
+        .collection('violations')
+        .where('parentId', isEqualTo: uid)
+        .snapshots()
+        .map((snap) {
+      final list =
+          snap.docs.map((d) => ViolationModel.fromFirestore(d)).toList();
+      list.sort((a, b) => b.dateOfIncident.compareTo(a.dateOfIncident));
       return list;
     });
   }

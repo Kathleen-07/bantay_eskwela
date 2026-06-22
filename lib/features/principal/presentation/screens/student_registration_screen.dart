@@ -431,6 +431,9 @@ class _StudentRegistrationScreenState
         _sections.contains(student.section) ? student.section : null;
     final formKey = GlobalKey<FormState>();
     bool saving = false;
+    Uint8List? newPhotoBytes;
+    String? newPhotoName;
+    bool uploadingPhoto = false;
 
     showDialog(
       context: context,
@@ -443,6 +446,112 @@ class _StudentRegistrationScreenState
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  Center(
+                    child: GestureDetector(
+                      onTap: uploadingPhoto
+                          ? null
+                          : () async {
+                              try {
+                                Uint8List? bytes;
+                                String? name;
+                                if (kIsWeb) {
+                                  final r =
+                                      await web_picker.pickPhotoFromGallery();
+                                  if (r != null) {
+                                    bytes = r.bytes;
+                                    name = r.name;
+                                  }
+                                } else {
+                                  final img = await ImagePicker().pickImage(
+                                      source: ImageSource.gallery,
+                                      maxWidth: 800,
+                                      maxHeight: 800,
+                                      imageQuality: 85);
+                                  if (img != null) {
+                                    bytes = await img.readAsBytes();
+                                    name = img.name;
+                                  }
+                                }
+                                if (bytes == null || name == null) return;
+                                final ext = name.split('.').last.toLowerCase();
+                                if (!['jpg', 'jpeg', 'png', 'webp']
+                                    .contains(ext)) {
+                                  ScaffoldMessenger.of(ctx).showSnackBar(
+                                    const SnackBar(
+                                        content: Text(
+                                            'Please select an image (JPG, PNG, WEBP)'),
+                                        backgroundColor: Colors.red),
+                                  );
+                                  return;
+                                }
+                                if (bytes.length > 5 * 1024 * 1024) {
+                                  ScaffoldMessenger.of(ctx).showSnackBar(
+                                    const SnackBar(
+                                        content:
+                                            Text('Photo too large. Max 5MB.'),
+                                        backgroundColor: Colors.red),
+                                  );
+                                  return;
+                                }
+                                setLocal(() {
+                                  newPhotoBytes = bytes;
+                                  newPhotoName = name;
+                                });
+                              } catch (e) {
+                                ScaffoldMessenger.of(ctx).showSnackBar(
+                                  SnackBar(content: Text('Error: $e')),
+                                );
+                              }
+                            },
+                      child: Stack(
+                        children: [
+                          Container(
+                            width: 90,
+                            height: 108,
+                            decoration: BoxDecoration(
+                              color: AppTheme.parchment,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                  color: AppTheme.gold, width: 2),
+                            ),
+                            clipBehavior: Clip.antiAlias,
+                            child: newPhotoBytes != null
+                                ? Image.memory(newPhotoBytes!,
+                                    fit: BoxFit.cover)
+                                : (student.photoUrl.isNotEmpty
+                                    ? Image.network(student.photoUrl,
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (_, __, ___) =>
+                                            const Icon(Icons.person,
+                                                size: 40, color: Colors.grey))
+                                    : const Icon(Icons.person,
+                                        size: 40, color: Colors.grey)),
+                          ),
+                          Positioned(
+                            right: 0,
+                            bottom: 0,
+                            child: Container(
+                              padding: const EdgeInsets.all(5),
+                              decoration: const BoxDecoration(
+                                  color: AppTheme.gold,
+                                  shape: BoxShape.circle),
+                              child: const Icon(Icons.camera_alt,
+                                  size: 14, color: Colors.white),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Center(
+                    child: Text(
+                      newPhotoName ?? 'Tap photo to change',
+                      style: TextStyle(
+                          fontSize: 11, color: Colors.grey.shade500),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
                   TextFormField(
                     controller: idCtrl,
                     keyboardType: TextInputType.number,
@@ -542,6 +651,15 @@ class _StudentRegistrationScreenState
                       if (!formKey.currentState!.validate()) return;
                       setLocal(() => saving = true);
                       try {
+                        String? uploadedUrl;
+                        if (newPhotoBytes != null && newPhotoName != null) {
+                          setLocal(() => uploadingPhoto = true);
+                          uploadedUrl = await CloudinaryService.uploadImage(
+                            imageBytes: newPhotoBytes!,
+                            fileName: newPhotoName!,
+                          );
+                          setLocal(() => uploadingPhoto = false);
+                        }
                         await ref
                             .read(principalRepositoryProvider)
                             .updateStudent(
@@ -552,11 +670,15 @@ class _StudentRegistrationScreenState
                               gradeLevel: grade!,
                               parentId: student.parentId,
                               parentPhone: phoneCtrl.text,
+                              photoUrl: uploadedUrl,
                             );
                         if (ctx.mounted) Navigator.pop(ctx);
                         _toast('Student updated!');
                       } catch (e) {
-                        setLocal(() => saving = false);
+                        setLocal(() {
+                          saving = false;
+                          uploadingPhoto = false;
+                        });
                         if (ctx.mounted) {
                           ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
                               content: Text(
