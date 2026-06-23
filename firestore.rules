@@ -189,6 +189,15 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // ===================== GATE SCANS (ESP32-CAM staging area) =====================
+    match /gate_scans/{scanId} {
+      // Guard (device account) at Principal lang makaka-access
+      allow read: if isGuard() || isPrincipal();
+      allow create: if isGuard() || isPrincipal();
+      allow delete: if isGuard() || isPrincipal();
+      allow update: if false; // hindi na-update, dini-delete lang pagkatapos i-confirm
+    }
+
     // ===================== DENY ALL ELSE =====================
     match /{document=**} {
       allow read, write: if false;
