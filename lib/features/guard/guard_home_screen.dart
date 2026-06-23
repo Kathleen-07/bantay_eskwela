@@ -33,7 +33,7 @@ class _GuardHomeScreenState extends ConsumerState<GuardHomeScreen> {
     try {
       final s = await ref
           .read(guardRepositoryProvider)
-          .findStudentByStudentId(scan.studentId);
+          .findStudentForScan(scan);
       if (!mounted) return;
       setState(() {
         _student = s;
@@ -250,7 +250,7 @@ class _GuardHomeScreenState extends ConsumerState<GuardHomeScreen> {
                   style: GoogleFonts.lora(
                       fontSize: 20, fontWeight: FontWeight.w600)),
               const SizedBox(height: 6),
-              Text('"${scan.studentId}" did not match any registered student.',
+              Text('"${scan.lookupValue}" did not match any registered student.',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: Colors.grey.shade700)),
               const SizedBox(height: 20),

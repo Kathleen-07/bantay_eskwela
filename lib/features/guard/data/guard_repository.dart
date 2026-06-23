@@ -37,15 +37,32 @@ class GuardRepository {
     });
   }
 
-  /// Look up a student by their Student ID / LRN.
-  Future<StudentModel?> findStudentByStudentId(String studentId) async {
-    final result = await _firestore
-        .collection('students')
-        .where('studentId', isEqualTo: studentId)
-        .limit(1)
-        .get();
-    if (result.docs.isEmpty) return null;
-    return StudentModel.fromFirestore(result.docs.first);
+  /// Look up a student from a scan. Prefers matching the QR token
+  /// (`qrData`), and falls back to `studentId` for legacy test docs.
+  Future<StudentModel?> findStudentForScan(GateScan scan) async {
+    // 1. Try matching the QR token against students' qrData.
+    if (scan.qrData.isNotEmpty) {
+      final byQr = await _firestore
+          .collection('students')
+          .where('qrData', isEqualTo: scan.qrData)
+          .limit(1)
+          .get();
+      if (byQr.docs.isNotEmpty) {
+        return StudentModel.fromFirestore(byQr.docs.first);
+      }
+    }
+    // 2. Fallback: match an explicit studentId (legacy/manual test docs).
+    if (scan.studentId.isNotEmpty) {
+      final byId = await _firestore
+          .collection('students')
+          .where('studentId', isEqualTo: scan.studentId)
+          .limit(1)
+          .get();
+      if (byId.docs.isNotEmpty) {
+        return StudentModel.fromFirestore(byId.docs.first);
+      }
+    }
+    return null;
   }
 
   /// Confirm the scan: write the final attendance record, then clear
