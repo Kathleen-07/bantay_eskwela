@@ -36,8 +36,9 @@ class _StudentRegistrationScreenState
     '7', '8', '9', '10', '11', '12',
   ];
   static const List<String> _sections = [
-    'St. Luke', 'St. Rita', 'St. Mark', 'St. John', 'St. Paul',
-    'St. Peter', 'St. Matthew', 'St. Joseph', 'St. Therese', 'St. Francis',
+    'St. Lorenzo Ruiz', 'St. Therese of the child Jesus', 'St. Pedro Calungsod', 'St. Eugene de Mazenod', 'St. Francis de Sales',
+    'St. John Bosco', 'St. John Paul ll', 'St. Joseph', 'St. Augustine', 'Notre Dame',
+    'Sacred Heart', 'St. Thomas Aquinas', 'Bishop George Dion', 'Bishop Gerard Mongeau',
   ];
 
   String? _selectedGrade;
@@ -560,7 +561,7 @@ class _StudentRegistrationScreenState
                       LengthLimitingTextInputFormatter(20),
                     ],
                     decoration: const InputDecoration(
-                        labelText: 'Student ID / LRN',
+                        labelText: 'Student ID',
                         border: OutlineInputBorder()),
                     validator: (v) {
                       if (v == null || v.trim().isEmpty) return 'Required';
@@ -770,7 +771,7 @@ class _StudentRegistrationScreenState
                         LengthLimitingTextInputFormatter(20),
                       ],
                       decoration: const InputDecoration(
-                          labelText: 'Student ID / LRN',
+                          labelText: 'Student ID',
                           prefixIcon: Icon(Icons.badge_outlined),
                           border: OutlineInputBorder()),
                       validator: (v) {

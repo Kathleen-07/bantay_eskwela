@@ -1,6 +1,8 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:bantay_eskwela/app/theme.dart';
+import 'package:bantay_eskwela/core/services/url_opener.dart';
 
 /// Opens a consent form. Images show in-app (zoomable); PDFs open externally.
 Future<void> openConsentForm(
@@ -13,12 +15,20 @@ Future<void> openConsentForm(
 
   if (isPdf) {
     final uri = Uri.parse(url);
-    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not open the form')),
-        );
-      }
+    bool ok;
+    if (kIsWeb) {
+      // On web, use window.open directly (via the conditional helper).
+      // url_launcher's new-tab attempt is silently blocked by the popup
+      // blocker because it runs after an await and loses the user gesture.
+      ok = await openUrlWeb(url);
+    } else {
+      // On Android/iOS, open in the external browser / PDF viewer.
+      ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+    if (!ok && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open the form')),
+      );
     }
     return;
   }
