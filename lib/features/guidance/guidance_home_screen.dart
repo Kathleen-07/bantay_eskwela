@@ -11,6 +11,7 @@ import 'package:bantay_eskwela/features/principal/domain/student_model.dart';
 import 'package:bantay_eskwela/features/guidance/domain/violation_model.dart';
 import 'package:bantay_eskwela/features/guidance/presentation/providers/guidance_providers.dart';
 import 'package:bantay_eskwela/features/guidance/presentation/widgets/severity_badge.dart';
+import 'package:bantay_eskwela/features/guidance/data/violations_excel_export.dart';
 
 class GuidanceHomeScreen extends ConsumerStatefulWidget {
   const GuidanceHomeScreen({super.key});
@@ -832,96 +833,120 @@ class _ViolationsListViewState extends ConsumerState<_ViolationsListView> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final violationsAsync = ref.watch(violationsStreamProvider);
+  Future<void> _exportAll(
+    List<ViolationModel> all,
+    Map<String, StudentModel> studentById,
+  ) async {
+    if (all.isEmpty) {
+      _toast('No violations to export.', error: true);
+      return;
+    }
+    try {
+      final liveGradeSection = <String, (String, String)>{
+        for (final e in studentById.entries)
+          e.key: (e.value.gradeLevel, e.value.section),
+      };
+      await exportViolationsToExcel(all, liveGradeSection: liveGradeSection);
+      _toast('Exported ${all.length} records to Excel.');
+    } catch (e) {
+      _toast('Export failed: ${e.toString().replaceAll('Exception: ', '')}',
+          error: true);
+    }
+  }
 
-    return CenteredColumn(
-      maxWidth: 820,
-      children: [
-        const SectionTitle('Violation Records'),
-        ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 500),
-          child: TextField(
-            controller: _searchController,
-            decoration: InputDecoration(
-              hintText: 'Search by student or type',
-              prefixIcon: const Icon(Icons.search),
-              suffixIcon: _query.isNotEmpty
-                  ? IconButton(
-                      icon: const Icon(Icons.clear),
-                      onPressed: () {
-                        _searchController.clear();
-                        setState(() => _query = '');
-                      })
-                  : null,
-              border: const OutlineInputBorder(),
-              isDense: true,
-            ),
-            onChanged: (v) =>
-                setState(() => _query = v.toLowerCase().trim()),
-          ),
-        ),
-        const SizedBox(height: 16),
-        violationsAsync.when(
-          data: (all) {
-            final list = _query.isEmpty
-                ? all
-                : all
-                    .where((v) =>
-                        v.studentName.toLowerCase().contains(_query) ||
-                        v.type.toLowerCase().contains(_query))
-                    .toList();
-            if (all.isEmpty) {
-              return const Card(
-                  child: Padding(
-                      padding: EdgeInsets.all(32),
-                      child:
-                          Center(child: Text('No violations recorded yet.'))));
-            }
-            if (list.isEmpty) {
-              return Card(
-                  child: Padding(
-                      padding: const EdgeInsets.all(32),
-                      child: Center(
-                          child: Text('No records match "$_query"',
-                              style:
-                                  TextStyle(color: Colors.grey.shade600)))));
-            }
-            return Column(
-              children: list.map((v) {
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  child: Padding(
-                    padding: const EdgeInsets.all(14),
-                    child: Column(
+  /// Opens a dialog listing every violation for one student.
+  void _showStudentViolations(String studentName, String photoUrl,
+      String gradeLevel, String section, List<ViolationModel> items) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 560, maxHeight: 600),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                      colors: [AppTheme.forest, AppTheme.pine]),
+                ),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 24,
+                      backgroundColor: Colors.white24,
+                      backgroundImage:
+                          photoUrl.isNotEmpty ? NetworkImage(photoUrl) : null,
+                      child: photoUrl.isEmpty
+                          ? const Icon(Icons.person, color: Colors.white)
+                          : null,
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(studentName,
+                              style: GoogleFonts.lora(
+                                  color: Colors.white,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w600)),
+                          Text('Grade $gradeLevel • $section',
+                              style: TextStyle(
+                                  color: Colors.white.withOpacity(0.8),
+                                  fontSize: 12)),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.18),
+                          borderRadius: BorderRadius.circular(20)),
+                      child: Text(
+                          '${items.length} violation${items.length == 1 ? '' : 's'}',
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600)),
+                    ),
+                    IconButton(
+                        icon: const Icon(Icons.close, color: Colors.white),
+                        onPressed: () => Navigator.pop(ctx)),
+                  ],
+                ),
+              ),
+              Flexible(
+                child: ListView.separated(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: items.length,
+                  separatorBuilder: (_, __) => const Divider(height: 20),
+                  itemBuilder: (_, i) {
+                    final v = items[i];
+                    return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
                           children: [
                             Expanded(
-                              child: Text(v.studentName,
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 15)),
+                              child: Row(children: [
+                                const Icon(Icons.category_outlined,
+                                    size: 15, color: AppTheme.forest),
+                                const SizedBox(width: 6),
+                                Flexible(
+                                  child: Text(v.type,
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.w600,
+                                          color: AppTheme.forest)),
+                                ),
+                              ]),
                             ),
                             SeverityBadge(severity: v.severity),
                           ],
                         ),
-                        const SizedBox(height: 2),
-                        Text('Grade ${v.gradeLevel} • ${v.section}',
-                            style: TextStyle(
-                                fontSize: 12, color: Colors.grey.shade600)),
-                        const SizedBox(height: 8),
-                        Row(children: [
-                          const Icon(Icons.category_outlined,
-                              size: 15, color: AppTheme.forest),
-                          const SizedBox(width: 6),
-                          Text(v.type,
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                  color: AppTheme.forest)),
-                        ]),
                         const SizedBox(height: 6),
                         Text(v.description,
                             style: const TextStyle(height: 1.4)),
@@ -948,14 +973,205 @@ class _ViolationsListViewState extends ConsumerState<_ViolationsListView> {
                               icon: const Icon(Icons.edit_outlined,
                                   color: AppTheme.gold, size: 20),
                               tooltip: 'Edit',
-                              onPressed: () => _edit(v)),
+                              onPressed: () {
+                                Navigator.pop(ctx);
+                                _edit(v);
+                              }),
                           IconButton(
                               icon: const Icon(Icons.delete_outline,
                                   color: Colors.red, size: 20),
                               tooltip: 'Delete',
-                              onPressed: () => _delete(v)),
+                              onPressed: () {
+                                Navigator.pop(ctx);
+                                _delete(v);
+                              }),
                         ]),
                       ],
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final violationsAsync = ref.watch(violationsStreamProvider);
+    // Look up the live student record by studentId so the photo, grade, and
+    // section always reflect the current student data (not the stale snapshot
+    // stored on the violation at record-time). No schema change needed.
+    final studentsAsync = ref.watch(guidanceStudentsProvider);
+    final Map<String, StudentModel> studentById = {
+      for (final s in (studentsAsync.valueOrNull ?? [])) s.studentId: s,
+    };
+
+    return CenteredColumn(
+      maxWidth: 820,
+      children: [
+        const SectionTitle('Violation Records'),
+        Row(
+          children: [
+            Expanded(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 500),
+                child: TextField(
+                  controller: _searchController,
+                  decoration: InputDecoration(
+                    hintText: 'Search by student or type',
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: _query.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear),
+                            onPressed: () {
+                              _searchController.clear();
+                              setState(() => _query = '');
+                            })
+                        : null,
+                    border: const OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                  onChanged: (v) =>
+                      setState(() => _query = v.toLowerCase().trim()),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            // Export button — pulls the full unfiltered list.
+            FilledButton.icon(
+              onPressed: () {
+                final all = violationsAsync.valueOrNull ?? [];
+                _exportAll(all, studentById);
+              },
+              icon: const Icon(Icons.file_download_outlined, size: 18),
+              label: const Text('Export to Excel'),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppTheme.forest,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        violationsAsync.when(
+          data: (all) {
+            // Group violations by student (keyed by studentId).
+            final Map<String, List<ViolationModel>> grouped = {};
+            for (final v in all) {
+              grouped.putIfAbsent(v.studentId, () => []).add(v);
+            }
+            // Apply search across the grouped students.
+            var entries = grouped.entries.toList();
+            if (_query.isNotEmpty) {
+              entries = entries.where((e) {
+                final first = e.value.first;
+                return first.studentName.toLowerCase().contains(_query) ||
+                    e.value.any((v) => v.type.toLowerCase().contains(_query));
+              }).toList();
+            }
+            // Sort by student name.
+            entries.sort((a, b) =>
+                a.value.first.studentName.compareTo(b.value.first.studentName));
+
+            if (all.isEmpty) {
+              return const Card(
+                  child: Padding(
+                      padding: EdgeInsets.all(32),
+                      child: Center(
+                          child: Text('No violations recorded yet.'))));
+            }
+            if (entries.isEmpty) {
+              return Card(
+                  child: Padding(
+                      padding: const EdgeInsets.all(32),
+                      child: Center(
+                          child: Text('No records match "$_query"',
+                              style:
+                                  TextStyle(color: Colors.grey.shade600)))));
+            }
+            return Column(
+              children: entries.map((entry) {
+                final items = entry.value
+                  ..sort((a, b) =>
+                      b.dateOfIncident.compareTo(a.dateOfIncident));
+                final s = items.first;
+                // Worst severity drives the badge shown on the summary card.
+                final worst = items
+                    .map((v) => v.severity)
+                    .reduce((a, b) => a.index >= b.index ? a : b);
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () {
+                      final live = studentById[s.studentId];
+                      _showStudentViolations(
+                        s.studentName,
+                        live?.photoUrl ?? '',
+                        live?.gradeLevel ?? s.gradeLevel,
+                        live?.section ?? s.section,
+                        items,
+                      );
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Row(
+                        children: [
+                          Builder(builder: (_) {
+                            final photo =
+                                studentById[s.studentId]?.photoUrl ?? '';
+                            return CircleAvatar(
+                              radius: 22,
+                              backgroundColor: AppTheme.forest.withOpacity(0.1),
+                              backgroundImage:
+                                  photo.isNotEmpty ? NetworkImage(photo) : null,
+                              child: photo.isEmpty
+                                  ? const Icon(Icons.person,
+                                      color: AppTheme.forest)
+                                  : null,
+                            );
+                          }),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(s.studentName,
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 15)),
+                                const SizedBox(height: 2),
+                                Builder(builder: (_) {
+                                  final live = studentById[s.studentId];
+                                  final grade =
+                                      live?.gradeLevel ?? s.gradeLevel;
+                                  final section = live?.section ?? s.section;
+                                  return Text('Grade $grade • $section',
+                                      style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.grey.shade600));
+                                }),
+                                const SizedBox(height: 6),
+                                Text(
+                                    '${items.length} violation${items.length == 1 ? '' : 's'} • latest ${DateFormat.yMMMd().format(items.first.dateOfIncident)}',
+                                    style: const TextStyle(
+                                        fontSize: 12,
+                                        color: AppTheme.forest,
+                                        fontWeight: FontWeight.w600)),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          SeverityBadge(severity: worst),
+                          const SizedBox(width: 4),
+                          Icon(Icons.chevron_right,
+                              color: Colors.grey.shade400),
+                        ],
+                      ),
                     ),
                   ),
                 );
