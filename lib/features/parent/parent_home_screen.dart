@@ -393,6 +393,43 @@ class _ChildCard extends StatelessWidget {
                     const SizedBox(height: 4),
                     Text(v.description, style: const TextStyle(height: 1.4)),
                     const SizedBox(height: 6),
+                    // Action taken by Guidance (after follow-up)
+                    Builder(builder: (_) {
+                      final pending = v.actionTaken.trim().isEmpty ||
+                          v.actionTaken == 'Pending';
+                      final c = pending ? Colors.grey : AppTheme.forest;
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: c.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(8),
+                            border:
+                                Border.all(color: c.withValues(alpha: 0.4)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                  pending
+                                      ? Icons.hourglass_empty
+                                      : Icons.task_alt,
+                                  size: 13,
+                                  color: c),
+                              const SizedBox(width: 5),
+                              Text(
+                                  'Action: ${pending ? 'Pending' : v.actionTaken}',
+                                  style: TextStyle(
+                                      fontSize: 12,
+                                      color: c,
+                                      fontWeight: FontWeight.w600)),
+                            ],
+                          ),
+                        ),
+                      );
+                    }),
                     Row(children: [
                       Icon(Icons.schedule,
                           size: 13, color: Colors.grey.shade500),

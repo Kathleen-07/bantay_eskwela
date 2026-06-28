@@ -29,6 +29,7 @@ Future<void> exportViolationsToExcel(
     'Violation Type',
     'Severity',
     'Description',
+    'Action Taken',
     'Date of Incident',
     'Recorded By',
   ];
@@ -47,6 +48,7 @@ Future<void> exportViolationsToExcel(
       TextCellValue(v.type),
       TextCellValue(v.severity.label),
       TextCellValue(v.description),
+      TextCellValue(v.actionTaken.trim().isEmpty ? 'Pending' : v.actionTaken),
       TextCellValue(df.format(v.dateOfIncident)),
       TextCellValue(v.recordedByName),
     ]);

@@ -675,6 +675,19 @@ class _RecordViolationViewState extends ConsumerState<_RecordViolationView> {
 }
 
 // ===================== VIOLATIONS LIST =====================
+
+/// Options for the "Action Taken" dropdown. 'Pending' is the default until
+/// Guidance follows up; 'Other' reveals a free-text field.
+const List<String> kActionOptions = [
+  'Pending',
+  'Verbal Warning',
+  'Written Warning',
+  'Parent Conference',
+  'Suspension',
+  'Community Service',
+  'Other',
+];
+
 class _ViolationsListView extends ConsumerStatefulWidget {
   const _ViolationsListView();
   @override
@@ -729,8 +742,15 @@ class _ViolationsListViewState extends ConsumerState<_ViolationsListView> {
   void _edit(ViolationModel v) {
     final descCtrl = TextEditingController(text: v.description);
     final typeCtrl = TextEditingController(text: v.type);
+    final otherActionCtrl = TextEditingController();
     var severity = v.severity;
     var date = v.dateOfIncident;
+    // Seed the action dropdown; if the stored action isn't a known option,
+    // treat it as a custom "Other" value.
+    var action = kActionOptions.contains(v.actionTaken)
+        ? v.actionTaken
+        : 'Other';
+    if (action == 'Other') otherActionCtrl.text = v.actionTaken;
     final formKey = GlobalKey<FormState>();
     bool saving = false;
 
@@ -764,6 +784,36 @@ class _ViolationsListViewState extends ConsumerState<_ViolationsListView> {
                     onChanged: (x) =>
                         setLocal(() => severity = x ?? ViolationSeverity.minor),
                   ),
+                  const SizedBox(height: 12),
+                  // Action Taken (after follow-up). Defaults to 'Pending'.
+                  DropdownButtonFormField<String>(
+                    value: action,
+                    isExpanded: true,
+                    decoration: const InputDecoration(
+                        labelText: 'Action Taken',
+                        prefixIcon: Icon(Icons.task_alt),
+                        border: OutlineInputBorder()),
+                    items: kActionOptions
+                        .map((a) =>
+                            DropdownMenuItem(value: a, child: Text(a)))
+                        .toList(),
+                    onChanged: (x) =>
+                        setLocal(() => action = x ?? 'Pending'),
+                  ),
+                  if (action == 'Other') ...[
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: otherActionCtrl,
+                      decoration: const InputDecoration(
+                          labelText: 'Specify action',
+                          prefixIcon: Icon(Icons.edit_outlined),
+                          border: OutlineInputBorder()),
+                      validator: (x) => (action == 'Other' &&
+                              (x == null || x.trim().isEmpty))
+                          ? 'Please specify the action'
+                          : null,
+                    ),
+                  ],
                   const SizedBox(height: 12),
                   OutlinedButton.icon(
                     onPressed: () async {
@@ -804,6 +854,9 @@ class _ViolationsListViewState extends ConsumerState<_ViolationsListView> {
                       if (!formKey.currentState!.validate()) return;
                       setLocal(() => saving = true);
                       try {
+                        final actionValue = action == 'Other'
+                            ? otherActionCtrl.text.trim()
+                            : action;
                         await ref
                             .read(guidanceRepositoryProvider)
                             .updateViolation(
@@ -812,6 +865,7 @@ class _ViolationsListViewState extends ConsumerState<_ViolationsListView> {
                               description: descCtrl.text,
                               severity: severity,
                               dateOfIncident: date,
+                              actionTaken: actionValue,
                             );
                         if (ctx.mounted) Navigator.pop(ctx);
                         _toast('Violation updated.');
@@ -950,6 +1004,42 @@ class _ViolationsListViewState extends ConsumerState<_ViolationsListView> {
                         const SizedBox(height: 6),
                         Text(v.description,
                             style: const TextStyle(height: 1.4)),
+                        const SizedBox(height: 8),
+                        // Action taken chip
+                        Builder(builder: (_) {
+                          final pending = v.actionTaken.trim().isEmpty ||
+                              v.actionTaken == 'Pending';
+                          final c = pending
+                              ? Colors.grey
+                              : AppTheme.forest;
+                          return Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: c.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: c.withOpacity(0.4)),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                    pending
+                                        ? Icons.hourglass_empty
+                                        : Icons.task_alt,
+                                    size: 13,
+                                    color: c),
+                                const SizedBox(width: 5),
+                                Text(
+                                    'Action: ${pending ? 'Pending' : v.actionTaken}',
+                                    style: TextStyle(
+                                        fontSize: 12,
+                                        color: c,
+                                        fontWeight: FontWeight.w600)),
+                              ],
+                            ),
+                          );
+                        }),
                         const SizedBox(height: 8),
                         Row(children: [
                           Icon(Icons.schedule,

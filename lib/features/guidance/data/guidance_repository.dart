@@ -63,6 +63,7 @@ class GuidanceRepository {
     required ViolationSeverity severity,
     required DateTime dateOfIncident,
     required String recordedByName,
+    String actionTaken = 'Pending',
   }) async {
     _validate(
         type: type, description: description, studentId: student.studentId);
@@ -78,6 +79,8 @@ class GuidanceRepository {
       type: InputValidators.sanitize(type),
       description: InputValidators.sanitize(description),
       severity: severity,
+      actionTaken: InputValidators.sanitize(
+          actionTaken.trim().isEmpty ? 'Pending' : actionTaken),
       dateOfIncident: dateOfIncident,
       recordedBy: _uid,
       recordedByName: InputValidators.sanitize(recordedByName),
@@ -92,15 +95,21 @@ class GuidanceRepository {
     required String description,
     required ViolationSeverity severity,
     required DateTime dateOfIncident,
+    String? actionTaken,
   }) async {
     _validate(type: type, description: description, studentId: 'x');
-    await _firestore.collection('violations').doc(violationId).update({
+    final data = <String, dynamic>{
       'type': InputValidators.sanitize(type),
       'description': InputValidators.sanitize(description),
       'severity': severity.label,
       'dateOfIncident': Timestamp.fromDate(dateOfIncident),
       'updatedAt': Timestamp.now(),
-    });
+    };
+    if (actionTaken != null) {
+      data['actionTaken'] = InputValidators.sanitize(
+          actionTaken.trim().isEmpty ? 'Pending' : actionTaken);
+    }
+    await _firestore.collection('violations').doc(violationId).update(data);
   }
 
   Future<void> deleteViolation(String violationId) async {

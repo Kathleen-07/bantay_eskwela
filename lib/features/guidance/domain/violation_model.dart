@@ -39,6 +39,7 @@ class ViolationModel {
   final String type;
   final String description;
   final ViolationSeverity severity;
+  final String actionTaken; // e.g. 'Pending', 'Verbal Warning', 'Suspension'
   final DateTime dateOfIncident;
   final String recordedBy;
   final String recordedByName;
@@ -54,6 +55,7 @@ class ViolationModel {
     required this.type,
     required this.description,
     required this.severity,
+    this.actionTaken = 'Pending',
     required this.dateOfIncident,
     required this.recordedBy,
     required this.recordedByName,
@@ -75,6 +77,8 @@ class ViolationModel {
           InputValidators.sanitize(data['description'] as String? ?? ''),
       severity: ViolationSeverityX.fromString(
           data['severity'] as String? ?? 'minor'),
+      actionTaken: InputValidators.sanitize(
+          data['actionTaken'] as String? ?? 'Pending'),
       dateOfIncident:
           (data['dateOfIncident'] as Timestamp?)?.toDate() ?? DateTime.now(),
       recordedBy: data['recordedBy'] as String? ?? '',
@@ -93,6 +97,7 @@ class ViolationModel {
         'type': type,
         'description': description,
         'severity': severity.label,
+        'actionTaken': actionTaken,
         'dateOfIncident': Timestamp.fromDate(dateOfIncident),
         'recordedBy': recordedBy,
         'recordedByName': recordedByName,
