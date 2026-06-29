@@ -19,10 +19,27 @@ class ParentConsentScreen extends ConsumerWidget {
     final consents = ref.watch(parentConsentsProvider);
     final children = ref.watch(myChildrenProvider);
     final signedKeys = ref.watch(mySignedKeysProvider);
+    // Active (non-ended) events. parentEventsProvider already filters out
+    // events whose day has passed, so any eventId still present here is
+    // "not yet ended". We hide consents whose event has ended.
+    final events = ref.watch(parentEventsProvider);
 
     return consents.when(
       data: (list) {
-        if (list.isEmpty) {
+        // Build the set of event IDs that are still active.
+        final activeEventIds =
+            (events.valueOrNull ?? []).map((e) => e.id).toSet();
+
+        // Keep only consents whose linked event is still active.
+        // (If a consent has no matching event for any reason, we hide it
+        // once events have loaded, since its event is no longer upcoming.)
+        final visible = list.where((c) {
+          // While events are still loading, show everything to avoid flicker.
+          if (events.isLoading) return true;
+          return activeEventIds.contains(c.eventId);
+        }).toList();
+
+        if (visible.isEmpty) {
           return Center(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -38,9 +55,9 @@ class ParentConsentScreen extends ConsumerWidget {
         }
         return ListView.builder(
           padding: const EdgeInsets.all(20),
-          itemCount: list.length,
+          itemCount: visible.length,
           itemBuilder: (context, i) => _ConsentCard(
-            consent: list[i],
+            consent: visible[i],
             childrenList: children.valueOrNull ?? [],
             signedKeys: signedKeys.valueOrNull ?? <String>{},
           ),
@@ -65,21 +82,18 @@ class _ConsentCard extends ConsumerWidget {
 
   Future<void> _sign(BuildContext context, WidgetRef ref, dynamic child) async {
     try {
-      // 1. Show signature pad dialog
       final bytes = await showSignaturePad(
         context,
         childName: child.fullName,
       );
-      if (bytes == null) return; // User cancelled
+      if (bytes == null) return;
 
-      // 2. Upload the drawn signature PNG to Cloudinary
       final safeId = child.studentId.replaceAll(RegExp(r'[^\w]'), '_');
       final signatureUrl = await CloudinaryService.uploadImage(
         imageBytes: bytes,
         fileName: 'signature_${consent.id}_$safeId.png',
       );
 
-      // 3. Record the immutable signature with the image URL
       final parentName =
           ref.read(currentUserProvider).valueOrNull?.fullName ?? 'Parent';
       await ref.read(parentRepositoryProvider).signConsent(
@@ -120,6 +134,9 @@ class _ConsentCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final mySignatures = ref.watch(mySignaturesProvider).valueOrNull ?? [];
+    // Deadline check — past the deadline, signing is locked.
+    final deadlinePassed = consent.deadline.isBefore(DateTime.now());
+
     return Card(
       margin: const EdgeInsets.only(bottom: 14),
       child: Padding(
@@ -131,10 +148,31 @@ class _ConsentCard extends ConsumerWidget {
                 style: GoogleFonts.lora(
                     fontSize: 16, fontWeight: FontWeight.w600)),
             const SizedBox(height: 4),
-            Text('Deadline: ${DateFormat.yMMMd().format(consent.deadline)}',
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+            Row(
+              children: [
+                Text('Deadline: ${DateFormat.yMMMd().format(consent.deadline)}',
+                    style:
+                        TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                if (deadlinePassed) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.red.shade50,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: Colors.red.shade200),
+                    ),
+                    child: Text('Deadline passed',
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.red.shade700,
+                            fontWeight: FontWeight.w600)),
+                  ),
+                ],
+              ],
+            ),
             const SizedBox(height: 8),
-            // View the form file
             OutlinedButton.icon(
               onPressed: () => _viewForm(context),
               icon: const Icon(Icons.open_in_new, size: 16),
@@ -166,7 +204,6 @@ class _ConsentCard extends ConsumerWidget {
                         InkWell(
                           borderRadius: BorderRadius.circular(8),
                           onTap: () {
-                            // Show this parent's signature(s) for this consent.
                             final mine = mySignatures
                                 .where((s) =>
                                     s.consentId == consent.id &&
@@ -198,6 +235,21 @@ class _ConsentCard extends ConsumerWidget {
                               ],
                             ),
                           ),
+                        )
+                      else if (deadlinePassed)
+                        // Deadline passed and not signed — locked.
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.lock_outline,
+                                size: 16, color: Colors.grey.shade500),
+                            const SizedBox(width: 4),
+                            Text('Closed',
+                                style: TextStyle(
+                                    color: Colors.grey.shade600,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600)),
+                          ],
                         )
                       else
                         FilledButton(

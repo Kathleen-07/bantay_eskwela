@@ -56,14 +56,19 @@ class _EventsScreenState extends ConsumerState<EventsScreen> {
   }
 
   Future<void> _pickDate() async {
-    final d = await showDatePicker(
+    // Normalize "today" to midnight so the date picker treats the current
+    // day as the earliest selectable date and greys out all past days.
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final date = await showDatePicker(
       context: context,
-      initialDate:
-          _selectedDate ?? DateTime.now().add(const Duration(days: 1)),
-      firstDate: DateTime.now().subtract(const Duration(days: 1)),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
+      initialDate: _selectedDate ?? today,
+      firstDate: today,
+      lastDate: today.add(const Duration(days: 365)),
     );
-    if (d != null) setState(() => _selectedDate = d);
+    if (date != null) {
+      setState(() => _selectedDate = date);
+    }
   }
 
   Future<void> _pickTime() async {

@@ -39,9 +39,9 @@ class _ParentHomeScreenState extends ConsumerState<ParentHomeScreen> {
   }
 
   /// When a tab is opened, mark it seen (clears its badge).
+  /// Bottom tabs are now: 0 Children, 1 Violations, 2 Events, 3 Consent, 4 Account.
   Future<void> _onTabOpened(int index) async {
     SeenTab? tab;
-    if (index == 1) tab = SeenTab.news;
     if (index == 2) tab = SeenTab.events;
     if (index == 3) tab = SeenTab.consent;
     if (tab == null) return;
@@ -49,18 +49,38 @@ class _ParentHomeScreenState extends ConsumerState<ParentHomeScreen> {
     await SeenTracker.markSeen(tab);
     final now = DateTime.now();
     if (!mounted) return;
-    if (tab == SeenTab.news) {
-      ref.read(lastSeenNewsProvider.notifier).state = now;
-    } else if (tab == SeenTab.events) {
+    if (tab == SeenTab.events) {
       ref.read(lastSeenEventsProvider.notifier).state = now;
     } else if (tab == SeenTab.consent) {
       ref.read(lastSeenConsentProvider.notifier).state = now;
     }
   }
 
+  /// Opens the announcements list (now reached via the top notification bell)
+  /// and marks them seen so the bell badge clears.
+  Future<void> _openAnnouncements() async {
+    await SeenTracker.markSeen(SeenTab.news);
+    if (mounted) {
+      ref.read(lastSeenNewsProvider.notifier).state = DateTime.now();
+    }
+    if (!mounted) return;
+    await Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => Scaffold(
+        appBar: AppBar(
+          title: Text('Announcements',
+              style: GoogleFonts.lora(
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                  fontSize: 19)),
+        ),
+        body: const _AnnouncementsView(),
+      ),
+    ));
+  }
+
   static const _titles = [
     'My Children',
-    'Announcements',
+    'Violation Records',
     'Events',
     'Consent Forms',
     'My Account',
@@ -68,7 +88,7 @@ class _ParentHomeScreenState extends ConsumerState<ParentHomeScreen> {
 
   final _views = const [
     _MonitorView(),
-    _AnnouncementsView(),
+    _ViolationsTabView(),
     _EventsView(),
     ParentConsentScreen(),
     AccountScreen(),
@@ -107,6 +127,13 @@ class _ParentHomeScreenState extends ConsumerState<ParentHomeScreen> {
               fontWeight: FontWeight.w600, color: Colors.white, fontSize: 19),
         ),
         actions: [
+          // Announcements notification bell (with unread badge).
+          IconButton(
+            onPressed: _openAnnouncements,
+            tooltip: 'Announcements',
+            icon: _badged(
+                const Icon(Icons.notifications_outlined), newsCount),
+          ),
           if (_index != 4)
             IconButton(
                 onPressed: _logout,
@@ -126,10 +153,10 @@ class _ParentHomeScreenState extends ConsumerState<ParentHomeScreen> {
               icon: Icon(Icons.family_restroom_outlined),
               selectedIcon: Icon(Icons.family_restroom),
               label: 'Children'),
-          NavigationDestination(
-              icon: _badged(const Icon(Icons.campaign_outlined), newsCount),
-              selectedIcon: const Icon(Icons.campaign),
-              label: 'News'),
+          const NavigationDestination(
+              icon: Icon(Icons.gavel_outlined),
+              selectedIcon: Icon(Icons.gavel),
+              label: 'Violations'),
           NavigationDestination(
               icon: _badged(const Icon(Icons.event_outlined), eventsCount),
               selectedIcon: const Icon(Icons.event),
@@ -178,7 +205,7 @@ Widget _eyebrow(String text) => Padding(
       ),
     );
 
-// ===================== MONITOR (per-child: attendance + violations) =====================
+// ===================== MONITOR (per-child: attendance only) =====================
 class _MonitorView extends ConsumerWidget {
   const _MonitorView();
 
@@ -186,7 +213,6 @@ class _MonitorView extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final children = ref.watch(myChildrenProvider);
     final attendance = ref.watch(myAttendanceProvider);
-    final violations = ref.watch(myChildrenViolationsProvider);
     final user = ref.watch(currentUserProvider).valueOrNull;
 
     final hour = DateTime.now().hour;
@@ -241,20 +267,15 @@ class _MonitorView extends ConsumerWidget {
                   'Once the school registers your child under your account, they will appear here.');
             }
             final att = attendance.valueOrNull ?? [];
-            final viol = violations.valueOrNull ?? [];
             return Column(
               children: kids.map((child) {
                 final childAtt = att
                     .where((a) => a.studentId == child.studentId)
                     .take(5)
                     .toList();
-                final childViol = viol
-                    .where((v) => v.studentId == child.studentId)
-                    .toList();
                 return _ChildCard(
                   child: child,
                   attendance: childAtt,
-                  violations: childViol,
                 );
               }).toList(),
             );
@@ -269,15 +290,13 @@ class _MonitorView extends ConsumerWidget {
   }
 }
 
-/// One card per child: header + their attendance + their violations.
+/// One card per child: header + their recent attendance.
 class _ChildCard extends StatelessWidget {
   final dynamic child;
   final List attendance;
-  final List violations;
   const _ChildCard({
     required this.child,
     required this.attendance,
-    required this.violations,
   });
 
   @override
@@ -339,7 +358,7 @@ class _ChildCard extends StatelessWidget {
           ),
           if (attendance.isEmpty)
             const Padding(
-              padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+              padding: EdgeInsets.fromLTRB(16, 0, 16, 14),
               child: Text('No attendance records yet.',
                   style: TextStyle(fontSize: 13, color: Colors.grey)),
             )
@@ -358,24 +377,138 @@ class _ChildCard extends StatelessWidget {
                 ),
               );
             }),
+          const SizedBox(height: 4),
+        ],
+      ),
+    );
+  }
 
-          const Divider(height: 1),
+  Widget _subLabel(IconData icon, String text) => Row(
+        children: [
+          Icon(icon, size: 15, color: AppTheme.forest),
+          const SizedBox(width: 6),
+          Text(text,
+              style: const TextStyle(
+                  fontSize: 11,
+                  letterSpacing: 1.2,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.forest)),
+        ],
+      );
+}
+// ===================== VIOLATIONS TAB (per child) =====================
+class _ViolationsTabView extends ConsumerWidget {
+  const _ViolationsTabView();
 
-          // Violations subsection
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-            child: _subLabel(Icons.gavel, 'Violation Records'),
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final children = ref.watch(myChildrenProvider);
+    final violations = ref.watch(myChildrenViolationsProvider);
+
+    return children.when(
+      data: (kids) {
+        if (kids.isEmpty) {
+          return _centeredEmpty(
+              Icons.family_restroom_outlined, 'No children linked yet');
+        }
+        final viol = violations.valueOrNull ?? [];
+        return ListView(
+          padding: const EdgeInsets.all(20),
+          children: kids.map((child) {
+            final childViol = viol
+                .where((v) => v.studentId == child.studentId)
+                .toList()
+              ..sort((a, b) => b.dateOfIncident.compareTo(a.dateOfIncident));
+            return _ChildViolationsCard(child: child, violations: childViol);
+          }).toList(),
+        );
+      },
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => _centeredEmpty(Icons.error_outline, 'Error: $e'),
+    );
+  }
+}
+
+/// One card per child listing all their violations (or an empty note).
+class _ChildViolationsCard extends StatelessWidget {
+  final dynamic child;
+  final List violations;
+  const _ChildViolationsCard({
+    required this.child,
+    required this.violations,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 16),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Child header — green strip with count
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: const BoxDecoration(
+              gradient:
+                  LinearGradient(colors: [AppTheme.forest, AppTheme.pine]),
+            ),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 24,
+                  backgroundColor: Colors.white,
+                  backgroundImage: child.photoUrl.isNotEmpty
+                      ? NetworkImage(child.photoUrl)
+                      : null,
+                  child: child.photoUrl.isEmpty
+                      ? const Icon(Icons.person, color: AppTheme.forest)
+                      : null,
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(child.fullName,
+                          style: GoogleFonts.lora(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600)),
+                      Text('Grade ${child.gradeLevel} • ${child.section}',
+                          style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.85),
+                              fontSize: 12)),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.18),
+                      borderRadius: BorderRadius.circular(20)),
+                  child: Text(
+                      '${violations.length} violation${violations.length == 1 ? '' : 's'}',
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600)),
+                ),
+              ],
+            ),
           ),
+
           if (violations.isEmpty)
             const Padding(
-              padding: EdgeInsets.fromLTRB(16, 0, 16, 14),
-              child: Text('No violation records.',
+              padding: EdgeInsets.fromLTRB(16, 14, 16, 16),
+              child: Text('No violation records. ',
                   style: TextStyle(fontSize: 13, color: Colors.grey)),
             )
           else
             ...violations.map((v) {
               return Padding(
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -445,6 +578,7 @@ class _ChildCard extends StatelessWidget {
                             overflow: TextOverflow.ellipsis),
                       ),
                     ]),
+                    if (v != violations.last) const Divider(height: 22),
                   ],
                 ),
               );
@@ -453,20 +587,8 @@ class _ChildCard extends StatelessWidget {
       ),
     );
   }
-
-  Widget _subLabel(IconData icon, String text) => Row(
-        children: [
-          Icon(icon, size: 15, color: AppTheme.forest),
-          const SizedBox(width: 6),
-          Text(text,
-              style: const TextStyle(
-                  fontSize: 11,
-                  letterSpacing: 1.2,
-                  fontWeight: FontWeight.w700,
-                  color: AppTheme.forest)),
-        ],
-      );
 }
+
 // ===================== ANNOUNCEMENTS =====================
 class _AnnouncementsView extends ConsumerWidget {
   const _AnnouncementsView();
@@ -534,61 +656,96 @@ class _EventsView extends ConsumerWidget {
           itemCount: list.length,
           itemBuilder: (context, i) {
             final e = list[i];
-            return Card(
-              margin: const EdgeInsets.only(bottom: 12),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(e.title,
-                              style: GoogleFonts.lora(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600)),
-                        ),
-                        if (e.requiresConsent)
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 3),
-                            decoration: BoxDecoration(
-                              color: AppTheme.gold.withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: const Text('Consent needed',
-                                style: TextStyle(
-                                    fontSize: 10,
-                                    color: AppTheme.pine,
-                                    fontWeight: FontWeight.w600)),
+            // Ended once the event's calendar day has fully passed.
+            final endOfEventDay = DateTime(
+                e.eventDate.year, e.eventDate.month, e.eventDate.day)
+                .add(const Duration(days: 1));
+            final ended = DateTime.now().isAfter(endOfEventDay);
+
+            // Faded look for ended events.
+            final titleColor = ended ? Colors.grey : null;
+            final bodyColor = ended ? Colors.grey : null;
+
+            return Opacity(
+              opacity: ended ? 0.65 : 1.0,
+              child: Card(
+                margin: const EdgeInsets.only(bottom: 12),
+                color: ended ? Colors.grey.shade100 : null,
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(e.title,
+                                style: GoogleFonts.lora(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                    color: titleColor)),
                           ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Text(e.description, style: const TextStyle(height: 1.4)),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        const Icon(Icons.place_outlined,
-                            size: 14, color: AppTheme.forest),
-                        const SizedBox(width: 4),
-                        Expanded(child: Text(e.location, style: const TextStyle(fontSize: 12))),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        const Icon(Icons.schedule,
-                            size: 14, color: AppTheme.forest),
-                        const SizedBox(width: 4),
-                        Text(
-                          DateFormat.yMMMd().add_jm().format(e.eventDate),
-                          style: const TextStyle(fontSize: 12),
-                        ),
-                      ],
-                    ),
-                  ],
+                          if (ended)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade400,
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: const Text('Ended',
+                                  style: TextStyle(
+                                      fontSize: 10,
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w600)),
+                            )
+                          else if (e.requiresConsent)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: AppTheme.gold.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: const Text('Consent needed',
+                                  style: TextStyle(
+                                      fontSize: 10,
+                                      color: AppTheme.pine,
+                                      fontWeight: FontWeight.w600)),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Text(e.description,
+                          style: TextStyle(height: 1.4, color: bodyColor)),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Icon(Icons.place_outlined,
+                              size: 14,
+                              color: ended ? Colors.grey : AppTheme.forest),
+                          const SizedBox(width: 4),
+                          Expanded(
+                              child: Text(e.location,
+                                  style: TextStyle(
+                                      fontSize: 12, color: bodyColor))),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Icon(Icons.schedule,
+                              size: 14,
+                              color: ended ? Colors.grey : AppTheme.forest),
+                          const SizedBox(width: 4),
+                          Text(
+                            DateFormat.yMMMd().add_jm().format(e.eventDate),
+                            style: TextStyle(fontSize: 12, color: bodyColor),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
             );

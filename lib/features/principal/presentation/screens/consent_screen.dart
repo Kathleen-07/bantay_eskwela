@@ -56,13 +56,18 @@ class _ConsentScreenState extends ConsumerState<ConsentScreen> {
   }
 
   Future<void> _pickDeadline() async {
-    final d = await showDatePicker(
+    // Start the picker on today, and block all past dates.
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final date = await showDatePicker(
       context: context,
-      initialDate: _deadline ?? DateTime.now().add(const Duration(days: 7)),
-      firstDate: DateTime.now(),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
+      initialDate: _deadline ?? today,
+      firstDate: today,
+      lastDate: today.add(const Duration(days: 365)),
     );
-    if (d != null) setState(() => _deadline = d);
+    if (date != null) {
+      setState(() => _deadline = date);
+    }
   }
 
   Future<void> _handleUpload() async {
