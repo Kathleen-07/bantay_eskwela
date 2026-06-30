@@ -51,30 +51,52 @@ class _ManageStaffScreenState extends ConsumerState<ManageStaffScreen> {
     }
   }
 
-  Future<void> _handleDelete(String uid, String name) async {
+  Future<void> _handleToggleActive(
+      String uid, String name, bool currentlyActive) async {
+    final action = currentlyActive ? 'Deactivate' : 'Reactivate';
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete Staff Account'),
-        content: Text(
-            'Permanently delete $name? They will immediately lose all access. This cannot be undone.'),
+        title: Text('$action Staff Account'),
+        content: Text(currentlyActive
+            ? 'Deactivate $name? They will be blocked from logging in, but their records are kept. You can reactivate them anytime.'
+            : 'Reactivate $name? They will be able to log in again.'),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              style: FilledButton.styleFrom(backgroundColor: Colors.red),
-              child: const Text('Delete')),
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(
+                backgroundColor: currentlyActive ? Colors.red : AppTheme.forest),
+            child: Text(action),
+          ),
         ],
       ),
     );
-    if (confirm != true) return;
-    try {
-      await ref.read(staffRepositoryProvider).deleteStaff(uid);
-      _toast('Staff account deleted.');
-    } catch (e) {
-      _toast('Delete failed: $e', error: true);
+    if (confirm == true) {
+      try {
+        await ref
+            .read(staffRepositoryProvider)
+            .setStaffActive(uid, !currentlyActive);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(currentlyActive
+                  ? '$name has been deactivated.'
+                  : '$name has been reactivated.'),
+              backgroundColor: AppTheme.forest,
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Action failed: $e'), backgroundColor: Colors.red),
+          );
+        }
+      }
     }
   }
 
@@ -188,6 +210,7 @@ class _ManageStaffScreenState extends ConsumerState<ManageStaffScreen> {
               children: staff.map((s) {
                 final role = s['role'] as String? ?? '';
                 final isGuidance = role == 'guidance';
+                final isActive = s['isActive'] as bool? ?? true;
                 return Card(
                   margin: const EdgeInsets.only(bottom: 12),
                   child: ListTile(
@@ -200,14 +223,44 @@ class _ManageStaffScreenState extends ConsumerState<ManageStaffScreen> {
                           isGuidance ? Icons.support_agent : Icons.security,
                           color: isGuidance ? AppTheme.forest : AppTheme.gold),
                     ),
-                    title: Text(s['fullName'] as String? ?? '',
-                        style: const TextStyle(fontWeight: FontWeight.bold)),
+                    title: Row(
+                      children: [
+                        Flexible(
+                          child: Text(s['fullName'] as String? ?? '',
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.bold)),
+                        ),
+                        if (!isActive) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.red.shade50,
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: Colors.red.shade200),
+                            ),
+                            child: Text('Deactivated',
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.red.shade700,
+                                    fontWeight: FontWeight.w600)),
+                          ),
+                        ],
+                      ],
+                    ),
                     subtitle: Text('${s['email']} • ${role.toUpperCase()}'),
                     trailing: IconButton(
-                      icon: const Icon(Icons.delete_outline, color: Colors.red),
-                      tooltip: 'Delete',
-                      onPressed: () => _handleDelete(s['id'] as String,
-                          s['fullName'] as String? ?? 'this staff'),
+                      icon: Icon(
+                        isActive ? Icons.block : Icons.check_circle_outline,
+                        color: isActive ? Colors.red : AppTheme.forest,
+                      ),
+                      tooltip: isActive ? 'Deactivate' : 'Reactivate',
+                      onPressed: () => _handleToggleActive(
+                        s['id'] as String,
+                        s['fullName'] as String? ?? 'this staff',
+                        isActive,
+                      ),
                     ),
                   ),
                 );

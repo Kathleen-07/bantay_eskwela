@@ -101,12 +101,16 @@ class StaffRepository {
     });
   }
 
-  /// Permanently delete a staff member's profile/role.
-  /// This revokes all their access immediately (no role = no access).
-  Future<void> deleteStaff(String uid) async {
+  /// Deactivate or reactivate a staff member (soft disable).
+  ///
+  /// We do NOT hard-delete: the client can't remove the Firebase Auth
+  /// credential anyway (only the Admin SDK can), and keeping the record
+  /// preserves the audit trail. Setting isActive=false blocks login —
+  /// the auth_repository login flow rejects deactivated accounts.
+  Future<void> setStaffActive(String uid, bool active) async {
     await _firestore
         .collection(AppConstants.usersCollection)
         .doc(uid)
-        .delete();
+        .update({'isActive': active});
   }
 }
