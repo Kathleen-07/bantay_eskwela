@@ -22,3 +22,7 @@ final todayLogProvider = StreamProvider<List<AttendanceRecord>>((ref) {
   if (!ref.watch(_guardReadyProvider)) return Stream.value([]);
   return ref.watch(guardRepositoryProvider).getTodayLogStream();
 });
+
+/// The guard's currently selected scan mode: 'Time In' or 'Time Out'.
+/// All incoming scans are auto-recorded under this mode until changed.
+final guardModeProvider = StateProvider<String>((ref) => 'Time In');

@@ -5,9 +5,6 @@ import 'package:bantay_eskwela/features/parent/data/parent_repository.dart'
     show AttendanceRecord;
 import 'package:bantay_eskwela/features/guard/domain/gate_scan_model.dart';
 
-/// Repository for the Guard role.
-/// Reacts to scans written by the ESP32-CAM gate scanner, looks up the
-/// student, and records the final attendance entry once the guard confirms.
 class GuardRepository {
   final FirebaseFirestore _firestore;
   final FirebaseAuth _auth;
@@ -23,13 +20,11 @@ class GuardRepository {
   }
 
   /// The most recent unprocessed scan, or null if none / too old.
-  /// A scan older than 2 minutes is treated as expired (ignored).
   Stream<GateScan?> watchPendingScan() {
     return _firestore.collection('gate_scans').snapshots().map((snap) {
       if (snap.docs.isEmpty) return null;
-      final scans =
-          snap.docs.map((d) => GateScan.fromFirestore(d)).toList()
-            ..sort((a, b) => b.scannedAt.compareTo(a.scannedAt));
+      final scans = snap.docs.map((d) => GateScan.fromFirestore(d)).toList()
+        ..sort((a, b) => b.scannedAt.compareTo(a.scannedAt));
       final latest = scans.first;
       final cutoff = DateTime.now().subtract(const Duration(minutes: 2));
       if (latest.scannedAt.isBefore(cutoff)) return null;
@@ -37,11 +32,10 @@ class GuardRepository {
     });
   }
 
-  /// Look up a student from a scan. Prefers matching the QR token
-  /// (`qrData`), and falls back to `studentId` for legacy test docs.
+  /// Look up a student by QR token first (qrData), falling back to
+  /// studentId for legacy/manual test scans.
   Future<StudentModel?> findStudentForScan(GateScan scan) async {
-    // 1. Try matching the QR token against students' qrData.
-    if (scan.qrData.isNotEmpty) {
+    if (scan.isQrToken) {
       final byQr = await _firestore
           .collection('students')
           .where('qrData', isEqualTo: scan.qrData)
@@ -51,7 +45,6 @@ class GuardRepository {
         return StudentModel.fromFirestore(byQr.docs.first);
       }
     }
-    // 2. Fallback: match an explicit studentId (legacy/manual test docs).
     if (scan.studentId.isNotEmpty) {
       final byId = await _firestore
           .collection('students')
@@ -65,8 +58,7 @@ class GuardRepository {
     return null;
   }
 
-  /// Confirm the scan: write the final attendance record, then clear
-  /// the staging scan doc.
+  /// Write the final attendance record, then clear the staging scan doc.
   Future<void> confirmAttendance({
     required GateScan scan,
     required StudentModel student,
@@ -83,12 +75,12 @@ class GuardRepository {
     await _firestore.collection('gate_scans').doc(scan.id).delete();
   }
 
-  /// Dismiss a scan without recording attendance (e.g. wrong/duplicate scan).
+  /// Dismiss a scan without recording attendance (duplicate / not found).
   Future<void> dismissScan(String scanId) async {
     await _firestore.collection('gate_scans').doc(scanId).delete();
   }
 
-  /// All of today's attendance records (for the on-screen log).
+  /// All of today's attendance records (for the log + duplicate checks).
   Stream<List<AttendanceRecord>> getTodayLogStream() {
     final now = DateTime.now();
     final startOfToday = DateTime(now.year, now.month, now.day);
