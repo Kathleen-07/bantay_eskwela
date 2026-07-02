@@ -455,6 +455,8 @@ class _GuardHomeScreenState extends ConsumerState<GuardHomeScreen> {
   }
 
   Widget _buildTodayLog(AsyncValue<List<AttendanceRecord>> logAsync) {
+    final studentsById = ref.watch(studentsByIdProvider).valueOrNull ??
+        const <String, StudentModel>{};
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -477,21 +479,29 @@ class _GuardHomeScreenState extends ConsumerState<GuardHomeScreen> {
                   child: Text('No scans recorded yet today.'),
                 );
               }
+
+              // Group all of today's records per student.
+              final grouped = <String, List<AttendanceRecord>>{};
+              for (final a in list) {
+                grouped.putIfAbsent(a.studentId, () => []).add(a);
+              }
+
+              // Order students by their most recent scan (newest first).
+              final entries = grouped.entries.toList()
+                ..sort((a, b) {
+                  final aLatest = a.value
+                      .map((r) => r.timestamp)
+                      .reduce((x, y) => x.isAfter(y) ? x : y);
+                  final bLatest = b.value
+                      .map((r) => r.timestamp)
+                      .reduce((x, y) => x.isAfter(y) ? x : y);
+                  return bLatest.compareTo(aLatest);
+                });
+
               return Column(
-                children: list.map<Widget>((a) {
-                  final isIn = a.type.toString().contains('In');
-                  return ListTile(
-                    dense: true,
-                    leading: Icon(isIn ? Icons.login : Icons.logout,
-                        color: isIn ? AppTheme.forest : AppTheme.gold),
-                    title: Text(a.studentName,
-                        style: const TextStyle(fontSize: 13)),
-                    subtitle:
-                        Text(a.type, style: const TextStyle(fontSize: 11)),
-                    trailing: Text(DateFormat('h:mm a').format(a.timestamp),
-                        style: const TextStyle(fontSize: 11)),
-                  );
-                }).toList(),
+                children: entries
+                    .map((e) => _logCard(e.value, studentsById[e.key]))
+                    .toList(),
               );
             },
             loading: () => const Padding(
@@ -499,6 +509,133 @@ class _GuardHomeScreenState extends ConsumerState<GuardHomeScreen> {
                 child: Center(child: CircularProgressIndicator())),
             error: (e, _) => Text('Error: $e'),
           ),
+        ],
+      ),
+    );
+  }
+
+  /// One combined card per student: circular photo + name + IN/OUT chips.
+  Widget _logCard(List<AttendanceRecord> records, StudentModel? student) {
+    // Pick the latest Time In and Time Out for this student today.
+    AttendanceRecord? timeIn;
+    AttendanceRecord? timeOut;
+    for (final r in records) {
+      if (r.type.contains('In')) {
+        if (timeIn == null || r.timestamp.isAfter(timeIn.timestamp)) {
+          timeIn = r;
+        }
+      } else {
+        if (timeOut == null || r.timestamp.isAfter(timeOut.timestamp)) {
+          timeOut = r;
+        }
+      }
+    }
+
+    final name = records.first.studentName;
+    final photoUrl = student?.photoUrl ?? '';
+    final subtitle = student != null
+        ? 'Grade ${student.gradeLevel} • ${student.section}'
+        : null;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppTheme.parchment.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.black.withOpacity(0.06)),
+      ),
+      child: Row(
+        children: [
+          // Circular student photo
+          Container(
+            width: 46,
+            height: 46,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppTheme.forest.withOpacity(0.08),
+              border: Border.all(color: AppTheme.forest.withOpacity(0.2)),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: photoUrl.isNotEmpty
+                ? Image.network(
+                    photoUrl,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Icon(Icons.person,
+                        color: AppTheme.forest.withOpacity(0.5)),
+                  )
+                : Icon(Icons.person,
+                    color: AppTheme.forest.withOpacity(0.5)),
+          ),
+          const SizedBox(width: 12),
+          // Name + grade/section + the two time chips
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(name,
+                    style: const TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.w600)),
+                if (subtitle != null) ...[
+                  const SizedBox(height: 2),
+                  Text(subtitle,
+                      style: TextStyle(
+                          fontSize: 11, color: Colors.grey.shade600)),
+                ],
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    _timeChip(
+                      icon: Icons.login,
+                      label: 'IN',
+                      time: timeIn?.timestamp,
+                      color: AppTheme.forest,
+                    ),
+                    const SizedBox(width: 8),
+                    _timeChip(
+                      icon: Icons.logout,
+                      label: 'OUT',
+                      time: timeOut?.timestamp,
+                      color: AppTheme.gold,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _timeChip({
+    required IconData icon,
+    required String label,
+    required DateTime? time,
+    required Color color,
+  }) {
+    final recorded = time != null;
+    final display = recorded ? DateFormat('h:mm a').format(time) : '—';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: recorded
+            ? color.withOpacity(0.12)
+            : Colors.grey.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon,
+              size: 13, color: recorded ? color : Colors.grey.shade400),
+          const SizedBox(width: 4),
+          Text('$label  $display',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: recorded ? color : Colors.grey.shade500,
+              )),
         ],
       ),
     );

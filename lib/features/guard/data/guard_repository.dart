@@ -80,6 +80,19 @@ class GuardRepository {
     await _firestore.collection('gate_scans').doc(scanId).delete();
   }
 
+  /// Live map of studentId -> StudentModel for photo / grade / section
+  /// lookups in the log (live lookup, not a stale snapshot).
+  Stream<Map<String, StudentModel>> getStudentsByIdStream() {
+    return _firestore.collection('students').snapshots().map((snap) {
+      final map = <String, StudentModel>{};
+      for (final d in snap.docs) {
+        final s = StudentModel.fromFirestore(d);
+        map[s.studentId] = s;
+      }
+      return map;
+    });
+  }
+
   /// All of today's attendance records (for the log + duplicate checks).
   Stream<List<AttendanceRecord>> getTodayLogStream() {
     final now = DateTime.now();
